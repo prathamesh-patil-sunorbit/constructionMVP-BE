@@ -13,23 +13,368 @@ import { Activity, BuildingSpec, Project, ProgressUpdate, StructureNode, Estimat
 import { COMPONENT_CATEGORIES } from '../models/constants.js';
 import { toDay, diffDays } from '../utils/dates.js';
 
-const SQFT_TO_SQM = 0.092903;
+// Massing envelope taken from the City Life marketing issue (job 2184), not from a survey.
+// 2184-021 is a long double-loaded plate: five bays along a 1.50 m corridor, flats both sides.
+// 2184-023 gives the 1.30 m open-balcony depth. 2184-001 Rev D is LGF+G+3P+21 floors.
+export const CITY_LIFE = {
+  plateLengthM: 52,
+  plateDepthM: 16.5,
+  balconyDepthM: 1.3,
+  baysX: 5,
+  baysZ: 2,
+  corridorM: 1.5,
+  residentialFloors: 21,
+  podiumFloors: 3,
+  refugeFloors: [4, 9, 14, 19],
+};
 
 export const DEFAULTS = {
-  plateAreaSqm: 100,
-  aspectRatio: 1.3,
+  plateAreaSqm: CITY_LIFE.plateLengthM * CITY_LIFE.plateDepthM,
+  aspectRatio: CITY_LIFE.plateLengthM / CITY_LIFE.plateDepthM,
   floorHeightM: 3,
   slabThicknessM: 0.15,
   columnSizeM: 0.45,
   wallThicknessM: 0.28,
-  baysX: 3,
-  baysZ: 2,
-  balconyDepthM: 1.4,
+  baysX: CITY_LIFE.baysX,
+  baysZ: CITY_LIFE.baysZ,
+  balconyDepthM: CITY_LIFE.balconyDepthM,
   towerGapM: 12,
-  balconySide: 'front',
+  balconySide: 'both',
   hasParking: true,
-  wallColor: '#f4e4c8',
+  wallColor: '#f6f3ee',
 };
+
+// Each flat is split into the rooms on the unit plan.
+// Local origin is the exterior-left corner: +x along the plate, +z toward the corridor.
+// 3 BHK is the end flat (11.70 × 7.50). 2 BHK is a middle flat (9.53 × 7.50).
+// A room item is [subtype, xFraction, zFraction, width, depth, height, name].
+const FLAT_PLANS = {
+  '3bhk': {
+    w: 11.7,
+    d: 7.5,
+    rooms: [
+      { name: 'Master bedroom', x: 0, z: 2.3, w: 3.3, d: 5.2, floor: 'room', items: [
+        ['bed', 0.55, 0.4, 2.0, 1.5, 0.45, 'bed'],
+        ['wardrobe', 0.14, 0.82, 0.45, 1.5, 2.1, 'wardrobe'],
+        ['side', 0.18, 0.28, 0.42, 0.42, 0.5, 'bedside table'],
+        ['side', 0.86, 0.28, 0.42, 0.42, 0.5, 'bedside table'],
+      ] },
+      { name: 'Toilet', x: 0, z: 0, w: 1.6, d: 2.3, floor: 'bath', items: [
+        ['wc', 0.42, 0.32, 0.42, 0.65, 0.42, 'toilet'],
+        ['basin', 0.72, 0.78, 0.5, 0.4, 0.8, 'wash basin'],
+      ] },
+      { name: 'Living', x: 3.3, z: 0, w: 3.5, d: 7.5, floor: 'room', items: [
+        ['curtain', 0.5, 0.07, 3.1, 0.16, 2.15, 'curtains'],
+        ['sofa', 0.4, 0.38, 1.8, 0.85, 0.42, 'sofa'],
+        ['coffee', 0.42, 0.55, 0.9, 0.5, 0.32, 'coffee table'],
+        ['tv', 0.86, 0.32, 0.4, 1.1, 0.7, 'TV'],
+        ['dining', 0.48, 0.8, 1.2, 0.75, 0.75, 'dining table'],
+      ] },
+      { name: 'Bedroom 2', x: 6.8, z: 0, w: 4.9, d: 3.15, floor: 'room', items: [
+        ['curtain', 0.5, 0.1, 3.4, 0.16, 2.15, 'curtains'],
+        ['bed', 0.42, 0.55, 1.9, 1.45, 0.45, 'bed'],
+        ['wardrobe', 0.88, 0.28, 1.2, 0.42, 2.1, 'wardrobe'],
+        ['side', 0.22, 0.78, 0.42, 0.42, 0.5, 'bedside table'],
+      ] },
+      { name: 'Bedroom 3', x: 6.8, z: 3.15, w: 2.7, d: 4.35, floor: 'room', items: [
+        ['bed', 0.52, 0.4, 1.8, 1.35, 0.45, 'bed'],
+        ['wardrobe', 0.16, 0.84, 0.42, 1.2, 2.1, 'wardrobe'],
+        ['side', 0.82, 0.22, 0.4, 0.4, 0.5, 'bedside table'],
+      ] },
+      { name: 'Kitchen', x: 9.5, z: 3.15, w: 2.2, d: 2.7, floor: 'kitchen', items: [
+        ['kitchen', 0.42, 0.35, 1.5, 0.55, 0.9, 'kitchen'],
+        ['fridge', 0.82, 0.78, 0.55, 0.55, 1.7, 'fridge'],
+      ] },
+      { name: 'Toilet', x: 9.5, z: 5.85, w: 2.2, d: 1.65, floor: 'bath', items: [
+        ['wc', 0.35, 0.4, 0.42, 0.6, 0.42, 'toilet'],
+        ['basin', 0.75, 0.62, 0.5, 0.38, 0.8, 'wash basin'],
+      ] },
+    ],
+    // [x1, z1, x2, z2, door distance along the wall, or null]
+    walls: [
+      [0, 2.3, 1.6, 2.3, 0.8],
+      [1.6, 0, 1.6, 2.3, null],
+      [3.3, 2.3, 3.3, 7.5, 4.8],
+      [6.8, 0, 6.8, 3.15, 1.6],
+      [6.8, 3.15, 6.8, 7.5, 5.2],
+      [6.8, 3.15, 11.7, 3.15, 8.1],
+      [9.5, 3.15, 9.5, 7.5, 4.3],
+      [9.5, 5.85, 11.7, 5.85, 10.5],
+    ],
+  },
+  '2bhk': {
+    w: 9.53,
+    d: 7.5,
+    rooms: [
+      { name: 'Bedroom 1', x: 0, z: 2.4, w: 3.2, d: 5.1, floor: 'room', items: [
+        ['bed', 0.55, 0.4, 2.0, 1.45, 0.45, 'bed'],
+        ['wardrobe', 0.12, 0.82, 0.4, 1.3, 2.1, 'wardrobe'],
+        ['side', 0.18, 0.28, 0.4, 0.4, 0.5, 'bedside table'],
+        ['side', 0.86, 0.28, 0.4, 0.4, 0.5, 'bedside table'],
+      ] },
+      { name: 'Toilet', x: 0, z: 0, w: 1.55, d: 2.4, floor: 'bath', items: [
+        ['wc', 0.4, 0.32, 0.4, 0.6, 0.42, 'toilet'],
+        ['basin', 0.7, 0.78, 0.48, 0.38, 0.8, 'wash basin'],
+      ] },
+      { name: 'Living', x: 3.2, z: 0, w: 3.1, d: 7.5, floor: 'room', items: [
+        ['curtain', 0.5, 0.07, 2.7, 0.16, 2.15, 'curtains'],
+        ['sofa', 0.42, 0.36, 1.7, 0.8, 0.42, 'sofa'],
+        ['coffee', 0.45, 0.52, 0.85, 0.48, 0.32, 'coffee table'],
+        ['tv', 0.88, 0.3, 0.38, 1.0, 0.7, 'TV'],
+        ['dining', 0.48, 0.78, 1.1, 0.7, 0.75, 'dining table'],
+      ] },
+      { name: 'Kitchen', x: 6.3, z: 0, w: 1.9, d: 3.4, floor: 'kitchen', items: [
+        ['curtain', 0.5, 0.1, 1.5, 0.14, 1.6, 'curtains'],
+        ['kitchen', 0.45, 0.4, 1.4, 0.55, 0.9, 'kitchen'],
+        ['fridge', 0.78, 0.8, 0.5, 0.5, 1.7, 'fridge'],
+      ] },
+      { name: 'Toilet', x: 8.2, z: 0, w: 1.33, d: 3.4, floor: 'bath', items: [
+        ['wc', 0.45, 0.28, 0.38, 0.58, 0.42, 'toilet'],
+        ['basin', 0.55, 0.78, 0.46, 0.36, 0.8, 'wash basin'],
+      ] },
+      { name: 'Bedroom 2', x: 6.3, z: 3.4, w: 3.23, d: 4.1, floor: 'room', items: [
+        ['bed', 0.52, 0.42, 1.85, 1.4, 0.45, 'bed'],
+        ['wardrobe', 0.88, 0.82, 0.4, 1.2, 2.1, 'wardrobe'],
+        ['side', 0.18, 0.25, 0.4, 0.4, 0.5, 'bedside table'],
+      ] },
+    ],
+    walls: [
+      [0, 2.4, 1.55, 2.4, 0.75],
+      [1.55, 0, 1.55, 2.4, null],
+      [3.2, 2.4, 3.2, 7.5, 4.8],
+      [6.3, 0, 6.3, 3.4, 1.6],
+      [6.3, 3.4, 6.3, 7.5, 5.2],
+      [6.3, 3.4, 9.53, 3.4, 7.3],
+      [8.2, 0, 8.2, 3.4, 1.7],
+    ],
+  },
+};
+
+function unitWidths(plateLength) {
+  const end = 11.7;
+  const mid = (plateLength - end * 2) / 3;
+  return [end, mid, mid, mid, end];
+}
+
+function wallPieces(length, doorAt) {
+  if (doorAt == null) return [[length / 2, length]];
+  const gap = 0.75;
+  const a = Math.max(0, doorAt - gap / 2);
+  const b = Math.min(length, doorAt + gap / 2);
+  const pieces = [];
+  if (a > 0.25) pieces.push([a / 2, a]);
+  if (length - b > 0.25) pieces.push([b + (length - b) / 2, length - b]);
+  return pieces;
+}
+
+export function furnishFloor({ push, meta, y0, wallH, xOffset, width, depth, floorLabel, wallIds, finishIds, openingIds, storey }) {
+  const sideDepth = (depth - CITY_LIFE.corridorM) / 2;
+  const widths = unitWidths(width);
+  const coreW = 5.6;
+  const cores = [width * 0.25, width * 0.75].map((cx) => [xOffset + cx - coreW / 2, xOffset + cx + coreW / 2]);
+  const hitsCore = (x) => cores.some(([a, b]) => x > a + 0.3 && x < b - 0.3);
+
+  const placeSide = (side) => {
+    let x0 = 0;
+    widths.forEach((unitW, u) => {
+      const kind = u === 0 || u === widths.length - 1 ? '3bhk' : '2bhk';
+      const plan = FLAT_PLANS[kind];
+      const flatNo = side === 'front' ? u + 1 : u + 6;
+      const tag = `${floorLabel} flat ${String(flatNo).padStart(2, '0')} ${kind === '3bhk' ? '3 BHK' : '2 BHK'}`;
+      const sx = unitW / plan.w;
+      const sz = sideDepth / plan.d;
+      const world = (lx, lz) => [
+        xOffset + x0 + lx * sx,
+        side === 'front' ? lz * sz : depth - lz * sz,
+      ];
+      for (const room of plan.rooms) {
+        const [fx, fz] = world(room.x + room.w / 2, room.z + room.d / 2);
+        push({
+          ...meta, type: 'flooring', subtype: room.floor === 'bath' ? 'bath' : room.floor === 'kitchen' ? 'kitchen-tile' : undefined, category: 'finishes',
+          position: [fx, y0 + 0.03, fz],
+          size: [room.w * sx - 0.08, 0.04, room.d * sz - 0.08],
+          label: `${tag} ${room.name}`,
+          activityIds: finishIds,
+        });
+        for (const [subtype, fxr, fzr, iw, id, ih, name] of room.items) {
+          const [x, z] = world(room.x + room.w * fxr, room.z + room.d * fzr);
+          push({
+            ...meta, type: 'furniture', subtype, category: 'finishes',
+            position: [x, y0 + ih / 2, z],
+            size: [Math.min(iw, room.w * sx * 0.85), ih, Math.min(id, room.d * sz * 0.8)],
+            label: `${tag} ${room.name} ${name}`,
+            activityIds: finishIds,
+          });
+        }
+      }
+      for (const [x1, z1, x2, z2, doorAt] of plan.walls) {
+        const horizontal = Math.abs(z1 - z2) < 0.01;
+        const length = horizontal ? Math.abs(x2 - x1) * sx : Math.abs(z2 - z1) * sz;
+        const origin = horizontal ? Math.min(x1, x2) : Math.min(z1, z2);
+        const scale = horizontal ? sx : sz;
+        const doorDist = doorAt == null ? null : (doorAt - origin) * scale;
+        for (const [mid, len] of wallPieces(length, doorDist)) {
+          const along = origin + mid / (horizontal ? sx : sz);
+          const [x, z] = horizontal
+            ? world(along, z1)
+            : world(x1, along);
+          push({
+            ...meta, type: 'wall', category: 'masonry',
+            position: [x, y0 + wallH * 0.46, z],
+            size: horizontal ? [len, wallH * 0.92, 0.1] : [0.1, wallH * 0.92, len],
+            label: `${tag} room wall`,
+            activityIds: wallIds,
+          });
+        }
+        if (doorDist != null && doorDist > 0.3 && doorDist < length - 0.3) {
+          const along = origin + doorDist / scale;
+          const [x, z] = horizontal ? world(along, z1) : world(x1, along);
+          const leaf = 0.75;
+          push({
+            ...meta, type: 'door', subtype: 'room', category: 'openings',
+            position: [x, y0 + 1.02, z],
+            size: horizontal ? [leaf, 2.04, 0.05] : [0.05, 2.04, leaf],
+            label: `${tag} room door`,
+            activityIds: openingIds,
+          });
+        }
+      }
+      if (u > 0) {
+        const zc = side === 'front' ? sideDepth / 2 : depth - sideDepth / 2;
+        push({
+          ...meta, type: 'wall', category: 'masonry',
+          position: [xOffset + x0, y0 + wallH * 0.46, zc],
+          size: [0.12, wallH * 0.92, sideDepth],
+          label: `${tag} party wall`,
+          activityIds: wallIds,
+        });
+      }
+      const doorX = unitW * (kind === '3bhk' ? 0.48 : 0.5);
+      const doorW = 0.9;
+      const doorCenter = xOffset + x0 + doorX + doorW / 2;
+      const wallZ = side === 'front' ? sideDepth : depth - sideDepth;
+      if (!hitsCore(doorCenter)) {
+        const segments = [
+          [doorX / 2, doorX],
+          [doorX + doorW + (unitW - doorX - doorW) / 2, unitW - doorX - doorW],
+        ];
+        for (const [cxLocal, len] of segments) {
+          if (len < 0.2) continue;
+          push({
+            ...meta, type: 'wall', category: 'masonry',
+            position: [xOffset + x0 + cxLocal, y0 + wallH * 0.46, wallZ],
+            size: [len, wallH * 0.92, 0.12],
+            label: `${tag} corridor wall`,
+            activityIds: wallIds,
+          });
+        }
+        push({
+          ...meta, type: 'door', category: 'openings',
+          position: [doorCenter, y0 + 1.05, wallZ],
+          size: [doorW, 2.1, 0.06],
+          label: `${tag} entrance door`,
+          activityIds: openingIds,
+        });
+      }
+      x0 += unitW;
+    });
+  };
+  placeSide('front');
+  placeSide('back');
+
+  const corridorZ = depth / 2;
+  const coreSpans = cores.map(([a]) => a - xOffset);
+  const corridorCuts = [0, ...coreSpans.flatMap((x) => [x, x + coreW]), width];
+  for (let i = 0; i < corridorCuts.length; i += 2) {
+    const a = corridorCuts[i];
+    const b = corridorCuts[i + 1];
+    if (b - a < 0.4) continue;
+    push({
+      ...meta, type: 'flooring', subtype: 'tile', category: 'finishes',
+      position: [xOffset + (a + b) / 2, y0 + 0.025, corridorZ],
+      size: [b - a - 0.08, 0.03, CITY_LIFE.corridorM - 0.08],
+      label: `${floorLabel} corridor`,
+      activityIds: finishIds,
+      callout: storey === 2 && i === 0 ? 'CORRIDOR' : undefined,
+    });
+  }
+
+  cores.forEach(([xL, xR], coreIndex) => {
+    const coreD = 2.7;
+    const z0 = corridorZ - coreD / 2;
+    const cx = (xL + xR) / 2;
+    const name = `${floorLabel} core ${coreIndex + 1}`;
+    const wallY = y0 + wallH * 0.46;
+    const shell = [
+      { position: [cx, wallY, z0], size: [coreW, wallH * 0.92, 0.12] },
+      { position: [cx, wallY, z0 + coreD], size: [coreW, wallH * 0.92, 0.12] },
+    ];
+    shell.forEach((p, idx) => push({
+      ...meta, type: 'wall', category: 'masonry',
+      ...p, label: `${name} wall ${idx + 1}`, activityIds: wallIds,
+    }));
+    for (const x of [xL, xR]) {
+      const gap = 1.05;
+      const sideLen = (coreD - gap) / 2;
+      for (const z of [z0 + sideLen / 2, z0 + coreD - sideLen / 2]) {
+        push({
+          ...meta, type: 'wall', category: 'masonry',
+          position: [x, wallY, z],
+          size: [0.12, wallH * 0.92, sideLen],
+          label: `${name} jamb`,
+          activityIds: wallIds,
+        });
+      }
+      push({
+        ...meta, type: 'door', subtype: 'room', category: 'openings',
+        position: [x, y0 + 1.02, corridorZ],
+        size: [0.05, 2.04, 0.9],
+        label: `${name} stair door`,
+        activityIds: openingIds,
+      });
+    }
+    push({
+      ...meta, type: 'flooring', category: 'finishes',
+      position: [cx, y0 + 0.04, corridorZ],
+      size: [coreW - 0.2, 0.05, coreD - 0.2],
+      label: `${name} stair hall`,
+      activityIds: finishIds,
+      callout: storey === 2 && coreIndex === 0 ? 'STAIR' : undefined,
+    });
+    const liftW = 1.45;
+    const liftD = 1.7;
+    [0, 1].forEach((n) => {
+      push({
+        ...meta, type: 'base', subtype: 'lift', category: 'structure',
+        position: [xR - 0.95, y0 + wallH * 0.45, corridorZ + (n === 0 ? -0.55 : 0.55)],
+        size: [liftW, wallH * 0.88, liftD * 0.55],
+        label: `${name} lift ${n + 1}`,
+        activityIds: wallIds,
+        callout: storey === 2 && coreIndex === 0 && n === 0 ? 'LIFT' : undefined,
+      });
+    });
+    const steps = 9;
+    const going = 0.28;
+    const flight = steps * going;
+    const stairX = xL + 0.45 + flight / 2;
+    for (let s = 0; s < steps; s++) {
+      push({
+        ...meta, type: 'stair', category: 'structure',
+        position: [xL + 0.4 + s * going + going / 2, y0 + 0.12 + s * 0.16, corridorZ],
+        size: [going - 0.02, 0.08, 1.15],
+        label: `${name} tread ${s + 1}`,
+        activityIds: wallIds,
+      });
+    }
+    push({
+      ...meta, type: 'railing', category: 'openings',
+      position: [stairX, y0 + 0.95, corridorZ - 0.62],
+      size: [flight, 0.05, 0.04],
+      label: `${name} handrail`,
+      activityIds: openingIds,
+    });
+  });
+}
 
 // Activity name -> component category. Drives which activities govern which geometry.
 const CATEGORY_RULES = [
@@ -52,25 +397,20 @@ function storeyNumber(name = '') {
   return match ? Number(match[1]) : null;
 }
 
-const area = (qty, unit = '') => {
-  if (!qty) return null;
-  if (/sq\.?\s?f|sqft|sft/i.test(unit)) return qty * SQFT_TO_SQM;
-  if (/sq\.?\s?m|sqm|m2/i.test(unit)) return qty;
-  return null;
-};
-
-// Factor a column count into a plausible grid matching the plate's aspect ratio.
-function columnGrid(count, aspect) {
-  if (!count || count < 4) return null;
-  let best = null;
-  for (let nx = 2; nx <= count / 2; nx++) {
-    if (count % nx) continue;
-    const nz = count / nx;
-    if (nz < 2) continue;
-    const error = Math.abs((nx - 1) / Math.max(1, nz - 1) - aspect);
-    if (!best || error < best.error) best = { nx, nz, error };
+// LGF + Ground + 3 podium + floors 1–21, from 2184-001 Rev D. A database floor with the
+// same name (Floor 17, for example) keeps its activities; the other storeys are massing only.
+function cityLifeLevels(dbFloors) {
+  const byName = new Map(dbFloors.map((f) => [f.name, f]));
+  const refuge = new Set(CITY_LIFE.refugeFloors);
+  const levels = [
+    { name: 'Lower Ground', kind: 'lgf' },
+    { name: 'Ground', kind: 'ground' },
+  ];
+  for (let i = 1; i <= CITY_LIFE.podiumFloors; i++) levels.push({ name: `Podium ${i}`, kind: 'podium' });
+  for (let n = 1; n <= CITY_LIFE.residentialFloors; n++) {
+    levels.push({ name: `Floor ${n}`, kind: refuge.has(n) ? 'refuge' : 'residential', storey: n });
   }
-  return best;
+  return levels.map((level) => ({ ...level, node: byName.get(level.name) || null, detail: Boolean(byName.get(level.name)) }));
 }
 
 /**
@@ -92,21 +432,20 @@ export function resolveSpec({ stored, activities, floors }) {
     return DEFAULTS[key];
   };
 
-  // Floor plate area from the largest slab/formwork quantity recorded in an area unit.
-  const slabActs = activities.filter((a) => categoryOf(a.name) === 'slab' && area(a.plannedQuantity, a.unit));
-  const biggest = slabActs.map((a) => ({ a, m2: area(a.plannedQuantity, a.unit) })).sort((x, y) => y.m2 - x.m2)[0];
+  // The activity quantities are one trade on one floor (for example 1,000 sq.ft of formwork).
+  // They are not the building plate. The plate comes from the City Life typical-floor drawing.
   const plateAreaSqm = take(
     'plateAreaSqm',
-    biggest ? Math.round(biggest.m2 * 10) / 10 : null,
-    biggest ? `${biggest.a.plannedQuantity} ${biggest.a.unit} on ${biggest.a.code} (${biggest.a.name})` : null,
+    Math.round(CITY_LIFE.plateLengthM * CITY_LIFE.plateDepthM * 10) / 10,
+    `2184-021 typical floor massing, ${CITY_LIFE.plateLengthM} m × ${CITY_LIFE.plateDepthM} m`,
   );
-  const aspectRatio = take('aspectRatio', null, null);
-
-  // Column grid from a column activity's count.
-  const colAct = activities.find((a) => /column/i.test(a.name) && a.plannedQuantity >= 4 && /nos?|no\.|each/i.test(a.unit || 'Nos'));
-  const grid = colAct ? columnGrid(colAct.plannedQuantity, aspectRatio) : null;
-  const baysX = take('baysX', grid ? grid.nx - 1 : null, colAct && grid ? `${colAct.plannedQuantity} columns on ${colAct.code} → ${grid.nx}×${grid.nz} grid` : null);
-  const baysZ = take('baysZ', grid ? grid.nz - 1 : null, colAct && grid ? `${colAct.plannedQuantity} columns on ${colAct.code} → ${grid.nx}×${grid.nz} grid` : null);
+  const aspectRatio = take(
+    'aspectRatio',
+    Math.round((CITY_LIFE.plateLengthM / CITY_LIFE.plateDepthM) * 100) / 100,
+    '2184-021 long slab: length ÷ depth',
+  );
+  const baysX = take('baysX', CITY_LIFE.baysX, '2184-021: five flat bays along the corridor');
+  const baysZ = take('baysZ', CITY_LIFE.baysZ, '2184-021: flats both sides of the 1.50 m corridor');
 
   // Slab thickness from concrete volume ÷ plate area, when that lands in a believable range.
   const conc = activities.find((a) => /concret/i.test(a.name) && /cum|m3|cu\.?m/i.test(a.unit || ''));
@@ -136,13 +475,16 @@ export function resolveSpec({ stored, activities, floors }) {
       floorHeightM: take('floorHeightM', null, null),
       columnSizeM: take('columnSizeM', null, null),
       wallThicknessM: take('wallThicknessM', null, null),
-      balconyDepthM: take('balconyDepthM', null, null),
+      balconyDepthM: take('balconyDepthM', CITY_LIFE.balconyDepthM, '2184-023 open balcony depth 1.30 m'),
       towerGapM: take('towerGapM', null, null),
       balconySide: stored?.balconySide || DEFAULTS.balconySide,
       hasParking: stored?.hasParking ?? DEFAULTS.hasParking,
       wallColor: stored?.wallColor || DEFAULTS.wallColor,
     },
-    sources,
+    sources: {
+      ...sources,
+      stack: '2184-001 Rev D: lower ground, ground, 3 podium, floors 1–21. Refuge on 4, 9, 14, 19 (2184-022).',
+    },
   };
 }
 
@@ -212,7 +554,8 @@ export async function buildModel(projectId) {
   let xOffset = 0;
 
   const push = (c) => {
-    components.push({ id: `c${components.length}`, ...c });
+    const unitMatch = typeof c.label === 'string' ? c.label.match(/flat (\d{2})/) : null;
+    components.push({ id: `c${components.length}`, ...c, unit: unitMatch ? unitMatch[1] : null });
     return components[components.length - 1];
   };
 
@@ -227,9 +570,10 @@ export async function buildModel(projectId) {
     return matched.map((a) => String(a._id));
   };
 
+  const massing = [];
   for (const tower of roots) {
-    const floors = floorsOf(tower._id);
-    const detailed = floors.length ? floors : [tower];
+    const levels = cityLifeLevels(floorsOf(tower._id));
+    massing.push({ tower, levels });
     const cx = xOffset + width / 2;
     const cz = depth / 2;
     const baseHeight = spec.floorsBelow * H;
@@ -269,15 +613,22 @@ export async function buildModel(projectId) {
         label: `${tower.name}: canopy ${idx + 1}`, activityIds: siteIds, subtype: 'crown',
       });
     });
-    push({
-      type: 'step', category: 'site', tower: tower.name, floorName: null, floorIndex: -1,
-      position: [cx, 0.12, -0.45], size: [2.2, 0.24, 0.9],
-      label: `${tower.name}: entrance steps`, activityIds: siteIds,
-    });
+    // Ground-floor entry sits one storey up, above the lower ground (2184-001).
+    const stepCount = 8;
+    const rise = H / stepCount;
+    const going = 0.36;
+    for (let s = 0; s < stepCount; s++) {
+      push({
+        type: 'step', category: 'site', tower: tower.name, floorName: null, floorIndex: -1,
+        position: [cx, rise * (s + 0.5), -(0.2 + (stepCount - s) * going)],
+        size: [5.2, rise, going + 0.02],
+        label: `${tower.name}: entrance step ${s + 1}`, activityIds: siteIds,
+      });
+    }
     push({
       type: 'canopy', category: 'structure', tower: tower.name, floorName: null, floorIndex: -1,
-      position: [cx, 2.55, -0.55], size: [3.2, 0.12, 1.4],
-      label: `${tower.name}: entrance canopy`, activityIds: [],
+      position: [cx, H + 2.65, -0.85], size: [7.2, 0.14, 2.4],
+      label: `${tower.name}: ground floor entrance canopy`, activityIds: [],
     });
     push({
       type: 'base', category: 'structure', tower: tower.name, floorName: null, floorIndex: -1,
@@ -314,13 +665,15 @@ export async function buildModel(projectId) {
       label: `${tower.name}: side hedge`, activityIds: siteIds,
     });
 
-    detailed.forEach((floor, i) => {
+    levels.forEach((level, i) => {
+      const floor = level.node || { _id: `city-${tower._id}-${level.name}`, name: level.name };
       const y0 = baseHeight + i * H;
       const floorLabel = floor.name;
       const link = (category) => linkFor(floor._id, tower._id, category);
       const meta = {
         tower: tower.name, floorName: floorLabel, floorIndex: i, floorNode: String(floor._id),
-        storey: storeyNumber(floorLabel),
+        storey: level.storey ?? null,
+        skin: level.kind === 'residential' || level.kind === 'refuge' ? 'tower' : 'podium',
       };
       const wallIds = link('masonry');
       const openingIds = link('openings');
@@ -424,10 +777,12 @@ export async function buildModel(projectId) {
 
         for (let b = 0; b < side.bays; b++) {
           const centre = bayLen * (b + 0.5);
-          const isEntrance = i === 0 && side.key === 'front' && b === Math.floor(side.bays / 2);
+          const isEntrance = level.kind === 'ground' && side.key === 'front' && b === Math.floor(side.bays / 2);
+          const shop = level.kind === 'ground';
+          const slot = level.kind === 'podium' || level.kind === 'lgf';
           const openW = bayLen - pierW;
-          const sillH = isEntrance ? 0.08 : (i === 0 ? 0.72 : 0.9);
-          const openH = isEntrance ? wallH * 0.88 : wallH * 0.56;
+          const sillH = isEntrance ? 0.08 : shop ? 0.25 : slot ? wallH * 0.45 : 0.85;
+          const openH = isEntrance ? wallH * 0.78 : shop ? wallH * 0.68 : slot ? wallH * 0.16 : wallH * 0.52;
           const lintelH = Math.max(0.2, wallH - sillH - openH);
 
           push({
@@ -451,6 +806,7 @@ export async function buildModel(projectId) {
             label: `${floorLabel} ${side.key} ${isEntrance ? 'entrance' : `window ${b + 1}`}`,
             activityIds: openingIds,
           });
+          if (!level.detail) continue;
           const ft = 0.07;
           const outF = t * 0.48;
           [
@@ -495,51 +851,14 @@ export async function buildModel(projectId) {
         }
       }
 
-      // Interior partitions so rooms read through the glass.
-      push({
-        ...meta, type: 'wall', category: 'masonry',
-        position: [cx, y0 + wallH / 2, cz],
-        size: [width - t * 2.4, wallH * 0.92, 0.12],
-        label: `${floorLabel} internal partition`, activityIds: wallIds,
-        callout: i === 0 ? 'WALL' : undefined,
-      });
-      push({
-        ...meta, type: 'wall', category: 'masonry',
-        position: [xOffset + width * 0.38, y0 + wallH / 2, cz],
-        size: [0.12, wallH * 0.92, depth - t * 2.4],
-        label: `${floorLabel} cross wall`, activityIds: wallIds,
-      });
-
-      push({
-        ...meta, type: 'flooring', category: 'finishes',
-        position: [cx, y0 + 0.035, cz],
-        size: [width - t * 2.2, 0.05, depth - t * 2.2],
-        label: `${floorLabel} floor finish`, activityIds: finishIds,
-      });
-      push({
-        ...meta, type: 'flooring', category: 'finishes', subtype: 'tile', engineering: true,
-        position: [xOffset + width * 0.78, y0 + 0.055, depth * 0.78],
-        size: [width * 0.32, 0.04, depth * 0.32],
-        label: `${floorLabel} bathroom tiles`, activityIds: finishIds,
-        callout: i === 0 ? 'TILES' : undefined,
-      });
-
-      for (let r = 0; r < spec.baysX; r++) {
-        const rx = xOffset + (r + 0.5) * bayW;
-        push({
-          ...meta, type: 'furniture', category: 'finishes',
-          position: [rx, y0 + 0.28, 1.2],
-          size: [bayW * 0.4, 0.42, 0.65],
-          label: `${floorLabel} sofa ${r + 1}`, activityIds: finishIds,
-        });
-        push({
-          ...meta, type: 'furniture', category: 'finishes',
-          position: [rx, y0 + 0.36, 1.85],
-          size: [0.38, 0.52, 0.38],
-          label: `${floorLabel} table ${r + 1}`, activityIds: finishIds,
+      if (level.kind === 'residential' || level.kind === 'refuge') {
+        furnishFloor({
+          push, meta, y0, wallH, xOffset, width, depth, floorLabel, wallIds, finishIds, openingIds,
+          storey: level.storey,
         });
       }
 
+      if (level.detail) {
       const lightIds = mepIds.length ? mepIds : finishIds;
       for (let lx = 0; lx < spec.baysX; lx++) {
         for (let lz = 0; lz < spec.baysZ; lz++) {
@@ -620,78 +939,74 @@ export async function buildModel(projectId) {
         label: `${floorLabel} AC unit`, activityIds: mepIds,
       });
 
-      // Straight flight inside the plate, clear of the front windows so the
-      // steps do not punch through the glazing. Treads only — not a solid core.
-      {
-        const stepCount = 14;
-        const rise = wallH / stepCount;
-        const going = 0.26;
-        const stairW = 1.05;
-        const flight = stepCount * going;
-        const x = xOffset + t + 0.7 + stairW / 2;
-        const zStart = Math.max(t + 1.4, (depth - flight) / 2);
-        for (let s = 0; s < stepCount; s++) {
-          push({
-            ...meta, type: 'stair', category: 'structure',
-            position: [x, y0 + rise * (s + 1), zStart + s * going + going / 2],
-            size: [stairW, 0.06, going + 0.01],
-            label: `${floorLabel} tread ${s + 1}`, activityIds: colIds,
-          });
-        }
-        const railZ0 = zStart;
-        const railZ1 = zStart + flight;
-        const railPosts = 5;
-        for (let p = 0; p < railPosts; p++) {
-          const z = railZ0 + (p / (railPosts - 1)) * (railZ1 - railZ0);
-          const y = y0 + (p / (railPosts - 1)) * wallH + 0.45;
-          push({
-            ...meta, type: 'railing', category: 'openings',
-            position: [x + stairW / 2 - 0.04, y, z],
-            size: [0.04, 0.9, 0.04],
-            label: `${floorLabel} stair post ${p + 1}`, activityIds: openingIds,
-          });
-        }
-        push({
-          ...meta, type: 'railing', category: 'openings',
-          position: [x + stairW / 2 - 0.04, y0 + wallH / 2 + 0.85, zStart + flight / 2],
-          size: [0.04, 0.04, flight],
-          rotation: [-Math.atan2(wallH, flight), 0, 0],
-          label: `${floorLabel} stair handrail`, activityIds: openingIds,
-        });
       }
 
-      if (spec.balconySide !== 'none' && i > 0) {
+      const residential = level.kind === 'residential' || level.kind === 'refuge';
+      if (spec.balconySide !== 'none' && residential) {
+        // One deck per flat bay, not one slab across the whole floor.
+        // End bays are the 3 BHK / convertible balcony (5.05 × 1.30). Middle bays are the 2 BHK balcony (3.05 × 1.53).
         const faces = spec.balconySide === 'both' ? ['front', 'back'] : [spec.balconySide];
-        for (const face of faces) {
-          const bz = face === 'front' ? -spec.balconyDepthM / 2 : depth + spec.balconyDepthM / 2;
-          const bw = width * 0.55;
-          push({
-            ...meta, type: 'balcony', category: 'slab', side: face,
-            position: [cx, y0 + 0.08, bz],
-            size: [bw, 0.12, spec.balconyDepthM],
-            label: `${floorLabel} ${face} balcony deck`, activityIds: link('slab'),
-          });
-          const railZ = face === 'front' ? bz - spec.balconyDepthM / 2 + 0.04 : bz + spec.balconyDepthM / 2 - 0.04;
-          push({
-            ...meta, type: 'railing', category: 'openings', side: face,
-            position: [cx, y0 + 0.58, railZ],
-            size: [bw, 0.04, 0.04],
-            label: `${floorLabel} balcony rail`, activityIds: openingIds,
-          });
-          const posts = 6;
-          for (let p = 0; p < posts; p++) {
-            const px = cx - bw / 2 + (p / (posts - 1)) * bw;
+        for (let b = 0; b < spec.baysX; b++) {
+          const end = b === 0 || b === spec.baysX - 1;
+          const deckW = end ? 5.05 : 3.05;
+          const deckD = end ? spec.balconyDepthM : 1.53;
+          const x = xOffset + bayW * (b + 0.5);
+          for (const face of faces) {
+            const z = face === 'front' ? -deckD / 2 : depth + deckD / 2;
+            const railZ = face === 'front' ? -deckD + 0.04 : depth + deckD - 0.04;
             push({
-              ...meta, type: 'railing', category: 'openings', side: face,
-              position: [px, y0 + 0.35, railZ],
-              size: [0.04, 0.5, 0.04],
-              label: `${floorLabel} balcony post ${p + 1}`, activityIds: openingIds,
+              ...meta, type: 'balcony', category: 'slab', side: face,
+              position: [x, y0 + 0.1, z],
+              size: [deckW, 0.14, deckD],
+              label: `${floorLabel} ${face} balcony ${b + 1} (${end ? '3 BHK 5.05 × 1.30' : '2 BHK 3.05 × 1.53'})`,
+              activityIds: link('slab'),
             });
+            push({
+              ...meta, type: 'railing', subtype: 'glass', category: 'openings', side: face,
+              position: [x, y0 + 0.62, railZ],
+              size: [deckW - 0.08, 1.05, 0.04],
+              label: `${floorLabel} ${face} balcony glass ${b + 1}`, activityIds: openingIds,
+            });
+            for (const sideX of [x - deckW / 2 + 0.03, x + deckW / 2 - 0.03]) {
+              const sideZ = face === 'front' ? -deckD / 2 : depth + deckD / 2;
+              push({
+                ...meta, type: 'railing', subtype: 'glass', category: 'openings', side: face,
+                position: [sideX, y0 + 0.62, sideZ],
+                size: [0.04, 1.05, deckD - 0.08],
+                label: `${floorLabel} balcony side glass`, activityIds: openingIds,
+              });
+            }
           }
         }
+        // Narrow side balcony on the 3 BHK / convertible (0.90 × 4.08), one each end.
+        for (const end of ['left', 'right']) {
+          const x = end === 'left' ? xOffset - 0.45 : xOffset + width + 0.45;
+          const z = depth * 0.72;
+          push({
+            ...meta, type: 'balcony', category: 'slab', side: end,
+            position: [x, y0 + 0.1, z],
+            size: [0.9, 0.14, 4.08],
+            label: `${floorLabel} ${end} side balcony 0.90 × 4.08`, activityIds: link('slab'),
+          });
+          const railX = end === 'left' ? xOffset - 0.86 : xOffset + width + 0.86;
+          push({
+            ...meta, type: 'railing', subtype: 'glass', category: 'openings', side: end,
+            position: [railX, y0 + 0.62, z],
+            size: [0.04, 1.05, 3.9],
+            label: `${floorLabel} ${end} side balcony glass`, activityIds: openingIds,
+          });
+        }
+        if (level.kind === 'refuge') {
+          push({
+            ...meta, type: 'band', subtype: 'marker', category: 'masonry', side: 'front',
+            position: [cx, y0 + wallH - 0.08, -0.08],
+            size: [width, 0.16, 0.08],
+            label: `${floorLabel} refuge band`, activityIds: wallIds,
+          });
+        }
       }
 
-      if (i === detailed.length - 1) {
+      if (i === levels.length - 1) {
         const ph = 0.7;
         const pt = 0.16;
         const topY = y0 + H + ph / 2;
@@ -716,8 +1031,31 @@ export async function buildModel(projectId) {
           size: [1.35, 1.05, 1.35],
           label: `${floorLabel} roof tank`, activityIds: mepIds,
         });
+        for (let p = 0; p < spec.baysX; p++) {
+          push({
+            ...meta, type: 'hedge', category: 'site',
+            position: [xOffset + bayW * (p + 0.5), y0 + H + 0.45, depth * 0.22],
+            size: [1.6, 0.7, 1.1],
+            label: `${floorLabel} roof planter ${p + 1}`, activityIds: [],
+          });
+        }
       }
     });
+
+    // Dark vertical fins between balcony stacks, from the top of the podium to the roof.
+    const podiumTop = (2 + CITY_LIFE.podiumFloors) * H;
+    const finH = levels.length * H - podiumTop;
+    for (let b = 1; b < spec.baysX; b++) {
+      const x = xOffset + (b / spec.baysX) * width;
+      for (const z of [-0.28, depth + 0.28]) {
+        push({
+          type: 'fin', subtype: 'fin', category: 'masonry', tower: tower.name, floorName: null, floorIndex: -1,
+          position: [x, podiumTop + finH / 2, z],
+          size: [0.45, finH, 0.85],
+          label: `${tower.name} facade fin ${b}`, activityIds: [],
+        });
+      }
+    }
 
     xOffset += width + spec.towerGapM;
   }
@@ -774,18 +1112,18 @@ export async function buildModel(projectId) {
       plateDepthM: Math.round(depth * 10) / 10,
       floorHeightM: H,
       towers: roots.length,
-      detailedFloors: allFloors.length,
-      totalHeightM: Math.round((spec.floorsBelow + Math.max(1, floorsOf(roots[0]?._id).length || 1)) * H * 10) / 10,
+      detailedFloors: massing[0]?.levels.length || 0,
+      totalHeightM: Math.round((spec.floorsBelow + (massing[0]?.levels.length || 1)) * H * 10) / 10,
     },
-    towers: roots.map((t) => ({
-      id: String(t._id),
-      name: t.name,
-      floors: floorsOf(t._id).map((f) => ({ id: String(f._id), name: f.name, storey: storeyNumber(f.name) })),
+    towers: massing.map(({ tower, levels: towerLevels }) => ({
+      id: String(tower._id),
+      name: tower.name,
+      floors: towerLevels.map((f) => ({ id: f.node ? String(f.node._id) : f.name, name: f.name, storey: f.storey ?? null })),
     })),
     components,
     activities: activityPayload,
     timeline: span && { start: span.start, end: span.end, days: diffDays(span.end, span.start) + 1 },
     categories: COMPONENT_CATEGORIES,
-    disclaimer: 'Parametric massing model generated from the activity plan and recorded quantities. It is an approximate representation for progress visualisation, not an architectural or BIM model, and it carries no surveyed or design accuracy.',
+    disclaimer: 'Massing of iTREND City Life from job 2184: long slab (2184-021), balconies both sides (2184-023), stack LGF + Ground + 3 podium + 21 floors (2184-001 Rev D). Floors 4, 9, 14 and 19 are refuge floors. It is not a surveyed or BIM model. Activity progress still attaches only to the floors that exist in the schedule.',
   };
 }

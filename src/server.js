@@ -14,6 +14,7 @@ import insightRoutes from './routes/insights.js';
 import integrationRoutes from './routes/integrations.js';
 import aiRoutes from './routes/ai.js';
 import buildingRoutes from './routes/building.js';
+import planCheckRoutes from './routes/plan-check.js';
 import resourceRoutes from './routes/resources.js';
 import { evaluateAllProjects } from './services/engine.js';
 import { hourlyAlertSweep, dailyAgentPass } from './services/ai/orchestrator.js';
@@ -39,6 +40,7 @@ app.use('/api/blockers', requireAuth, blockerRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/ai', requireAuth, aiRoutes);
 app.use('/api/building', requireAuth, buildingRoutes);
+app.use('/api/plans', requireAuth, planCheckRoutes);
 app.use('/api/resources', requireAuth, resourceRoutes);
 app.use('/api', requireAuth, insightRoutes);
 
