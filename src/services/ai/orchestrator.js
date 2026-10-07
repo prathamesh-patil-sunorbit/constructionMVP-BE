@@ -16,6 +16,7 @@ import { simulate, SCENARIOS } from './simulation.js';
 import {
   AGENTS, COPILOT_SYSTEM, copilotSchema, SIMULATION_SYSTEM, simulationSchema, deterministicHeadline,
 } from './agents.js';
+import { geotechCopilotAnswer } from './geotech.js';
 import { fmt } from '../../utils/dates.js';
 
 // Which agents each role may run. Keeps AI output aligned with existing permissions.
@@ -214,6 +215,8 @@ export async function syncAlerts(projectId, parts) {
 
 const INTENTS = [
   { agent: 'simulation', patterns: [/what (if|happens if)/i, /\bif (i|we) (add|remove|increase|reduce)/i, /\bsimulate\b/i] },
+  // Answered from the stored plinth estimate, before the generic equipment/ground intents.
+  { agent: 'geotech', patterns: [/plinth/i, /geo-?tech/i, /soil (investigation )?report/i, /bore ?(hole|log)/i] },
   { agent: 'completion', patterns: [/when will/i, /completion/i, /finish (date|by)/i, /hand ?over/i] },
   { agent: 'delay', patterns: [/delay/i, /behind/i, /late/i, /why.*(slow|slip)/i, /critical path/i, /holding up/i] },
   { agent: 'planning', patterns: [/critical path|phase|milestone|baseline|dependenc|plan the/i] },
@@ -287,6 +290,16 @@ export async function askCopilot({ question, projectId, user, conversationId }) 
     };
   }
   const intent = detectIntent(question);
+  if (intent === 'geotech') {
+    // The arithmetic is already stored on the estimate: no model call needed.
+    const project = await Project.findById(resolved, 'name code').lean();
+    const result = await geotechCopilotAnswer(resolved);
+    const conversation = await recordExchange({ resolved, user, question, conversationId, intent, result, status: 'Success' });
+    return {
+      ...result, agent: intent, aiGenerated: false, conversationId: String(conversation._id),
+      project: { id: String(resolved), name: project?.name, code: project?.code },
+    };
+  }
   const analysis = await analysisFor(resolved);
   const { snap, parts } = analysis;
   const fallbackKey = intent === 'simulation' ? 'completion' : intent;
@@ -337,6 +350,16 @@ export async function askCopilot({ question, projectId, user, conversationId }) 
     result = degrade('The AI service is unavailable right now, so a written answer could not be generated.');
   }
 
+  const thread = await recordExchange({ resolved, user, question, conversationId, intent, result, status, errorMessage });
+
+  return {
+    ...result, agent: intent, aiGenerated: status === 'Success', conversationId: String(thread._id),
+    project: { id: String(resolved), name: snap.project.name, code: snap.project.code },
+  };
+}
+
+// Every copilot answer is recorded as a run and appended to the user's conversation thread.
+async function recordExchange({ resolved, user, question, conversationId, intent, result, status, errorMessage = null }) {
   const run = await AiRun.create({
     project: resolved, agent: intent === 'simulation' ? 'copilot' : intent, trigger: 'copilot',
     user: user?._id, question, context: { intent }, output: result,
@@ -354,11 +377,7 @@ export async function askCopilot({ question, projectId, user, conversationId }) 
     role: 'assistant', text: result.answer, agent: intent, sources: result.sources || [], run: run._id,
   });
   await thread.save();
-
-  return {
-    ...result, agent: intent, aiGenerated: status === 'Success', conversationId: String(thread._id),
-    project: { id: String(resolved), name: snap.project.name, code: snap.project.code },
-  };
+  return thread;
 }
 
 // ---------------------------------------------------------------------------

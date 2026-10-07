@@ -16,6 +16,8 @@ import aiRoutes from './routes/ai.js';
 import buildingRoutes from './routes/building.js';
 import planCheckRoutes from './routes/plan-check.js';
 import resourceRoutes from './routes/resources.js';
+import geotechRoutes from './routes/geotech.js';
+import plinthPlanRoutes from './routes/plinth-plan.js';
 import { evaluateAllProjects } from './services/engine.js';
 import { hourlyAlertSweep, dailyAgentPass } from './services/ai/orchestrator.js';
 import { BLOCKER_TYPES, BLOCKER_STATUSES, ACTIVITY_STATUSES, HEALTH_STATES, ROLES, SEVERITIES, PRIORITIES } from './models/constants.js';
@@ -42,6 +44,8 @@ app.use('/api/ai', requireAuth, aiRoutes);
 app.use('/api/building', requireAuth, buildingRoutes);
 app.use('/api/plans', requireAuth, planCheckRoutes);
 app.use('/api/resources', requireAuth, resourceRoutes);
+app.use('/api/geotech', requireAuth, geotechRoutes);
+app.use('/api/plinth-plan', requireAuth, plinthPlanRoutes);
 app.use('/api', requireAuth, insightRoutes);
 
 app.use((err, req, res, next) => {
@@ -66,7 +70,9 @@ const tick = async () => {
   try {
     await evaluateAllProjects();
     await hourlyAlertSweep();
-    await dailyAgentPass({ hour: Number(process.env.AI_DAILY_HOUR) || 18 });
+    // Off by default: it runs every agent for every project (one model call each), which on a
+    // free-tier key uses most of the daily quota. Set AI_DAILY_PASS=on to enable it.
+    if (process.env.AI_DAILY_PASS === 'on') await dailyAgentPass({ hour: Number(process.env.AI_DAILY_HOUR) || 18 });
   } catch (e) {
     console.error('Scheduled evaluation failed', e);
   }

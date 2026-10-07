@@ -67,6 +67,40 @@ export const DEFAULT_RULES = {
       lowDays: 5,
       excessDays: 30,
     },
+    // Plinth estimate from a geotechnical report (services/ai/geotech.js). Placeholder rates
+    // until the estimation team confirms them; every figure in an estimate names its rate.
+    geotech: {
+      defaultDepthM: 1.5, // used when neither the user nor the report gives a depth
+      softSbcBelowKnM2: 100, // safe bearing capacity below this => soft soil
+      hardSbcFromKnM2: 250, // at or above this => hard strata
+      raftBelowSbcKnM2: 100, // below this a raft is assumed even if the report does not say so
+      bulkingFactor: { soft: 1.2, ordinary: 1.25, hard: 1.3, rock: 1.5 },
+      jcbM3PerDay: { soft: 200, ordinary: 160, hard: 100, rock: 45 }, // loose m³ per JCB per 8 h day
+      dewateringProductivityFactor: 0.8, // wet excavation is slower
+      targetExcavationDays: 5,
+      maxJcbs: 3,
+      plinthAreaPerJcbSqm: 150, // working room each JCB needs
+      pcc: { thicknessM: 0.1, offsetM: 0.15, m3PerDay: 20, masons: 2, helpers: 6 },
+      footing: { perHundredSqm: 4, sizeM: 2, depthM: 0.6, steelKgPerM3: 80 },
+      raft: { thicknessM: 0.45, steelKgPerM3: 100 },
+      plinthBeam: { widthM: 0.23, depthM: 0.45, aspectRatio: 1.5, lengthFactor: 1.6, steelKgPerM3: 130 },
+      rcc: {
+        m3PerGangUnit: 20, // concrete volume one gang unit handles
+        maxGangUnits: 4,
+        gangUnit: { masons: 2, barBenders: 3, carpenters: 2, helpers: 4 },
+        steelKgPerBarBenderDay: 300,
+        shutteringSqmPerCarpenterDay: 12,
+        mixerM3PerDay: 20,
+        pumpFromM3: 40, // at or above this volume, concrete is pumped from transit mixers
+        pumpM3PerDay: 150,
+        transitMixerM3: 6,
+        transitMixerTripsPerDay: 5,
+        curingDays: 3, // before the next phase loads the member
+      },
+      backfill: { m3PerJcbDay: 100, helpers: 4 },
+      // Learning from recorded actuals: each default rate counts as this many observations.
+      learning: { priorWeight: 3, minFactor: 0.4, maxFactor: 2 },
+    },
   },
   escalation: {
     minSeverity: 'Low',

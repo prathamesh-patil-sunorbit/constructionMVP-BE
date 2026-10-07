@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { connectDb } from '../src/config/db.js';
 import {
   User, Project, StructureNode, Activity, Dependency, ProgressUpdate, Blocker, Risk, Escalation,
-  Notification, Comment, Attachment, AuditLog, Setting, Team, Estimate, ExecutionLog, IntegrationSync,
+  Notification, Comment, Attachment, AuditLog, Setting, Team, Estimate, ExecutionLog, IntegrationSync, GeotechReport, PlinthDay,
 } from '../src/models/index.js';
 import { evaluateProject, plannedProgressOn } from '../src/services/engine.js';
 import { DEFAULT_RULES } from '../src/services/settings.js';
@@ -19,7 +19,7 @@ import { today, addDays } from '../src/utils/dates.js';
 
 await connectDb();
 await Promise.all([User, Project, StructureNode, Activity, Dependency, ProgressUpdate, Blocker, Risk, Escalation,
-  Notification, Comment, Attachment, AuditLog, Setting, Team, Estimate, ExecutionLog, IntegrationSync].map((m) => m.deleteMany({})));
+  Notification, Comment, Attachment, AuditLog, Setting, Team, Estimate, ExecutionLog, IntegrationSync, GeotechReport, PlinthDay].map((m) => m.deleteMany({})));
 
 const T = today();
 const d = (offset) => addDays(T, offset);

@@ -3,7 +3,7 @@ import {
   ROLES, PROJECT_STATUSES, ACTIVITY_STATUSES, HEALTH_STATES, PRIORITIES, DEPENDENCY_TYPES,
   BLOCKER_TYPES, BLOCKER_STATUSES, SEVERITIES, TEAM_TYPES,
   AI_TRIGGERS, AI_DECISIONS, AI_ALERT_LEVELS,
-  STOCK_RISKS, INVENTORY_TXN_TYPES, LABOUR_CATEGORIES, REPORT_KINDS, CAMERA_VERIFY,
+  STOCK_RISKS, INVENTORY_TXN_TYPES, LABOUR_CATEGORIES, REPORT_KINDS, CAMERA_VERIFY, GEOTECH_VERIFY,
 } from './constants.js';
 
 const { Schema, model } = mongoose;
@@ -521,6 +521,81 @@ const aiReportSchema = new Schema({
   run: ref('AiRun'),
 }, opts);
 export const AiReport = model('AiReport', aiReportSchema);
+
+// Geotechnical report and the plinth estimate calculated from it. Gemini only fills
+// `extraction.facts`; `estimate` is computed by services/ai/geotech.js from those facts and the
+// user's inputs. `actual` is what happened on site, which the agent learns its rates from.
+const geotechReportSchema = new Schema({
+  project: { ...ref('Project'), required: true, index: true },
+  uploadedBy: ref('User'),
+  source: { type: String, enum: ['upload', 'sample'], default: 'upload' },
+  file: { originalName: String, filename: String, url: String, mimetype: String, size: Number },
+  extraction: {
+    status: { type: String, enum: ['Read', 'Not read', 'Sample'], required: true },
+    reason: String,
+    model: String,
+    facts: Schema.Types.Mixed,
+  },
+  inputs: {
+    plinthAreaSqm: Number,
+    depthM: Number, // as typed by the user, if any
+    depthUsedM: Number,
+    depthSource: String,
+  },
+  estimate: Schema.Types.Mixed,
+  narration: Schema.Types.Mixed, // AI-written explanation of the calculated estimate
+  verification: {
+    status: { type: String, enum: GEOTECH_VERIFY, default: 'Pending' },
+    by: ref('User'),
+    at: Date,
+    note: String,
+  },
+  actual: {
+    excavationDays: Number,
+    jcbCount: Number,
+    totalDays: Number,
+    note: String,
+    recordedBy: ref('User'),
+    at: Date,
+  },
+  run: ref('AiRun'),
+  prediction: ref('AiPrediction'),
+}, opts);
+geotechReportSchema.index({ project: 1, createdAt: -1 });
+export const GeotechReport = model('GeotechReport', geotechReportSchema);
+
+// One working day of an accepted plinth estimate: the checklist the site engineer works through.
+// Created when the estimate is accepted; the engineer ticks items, adds their own and records the
+// actual quantity. `items` with source 'plan' come from the estimate, 'added' from people on site.
+const plinthDaySchema = new Schema({
+  report: { ...ref('GeotechReport'), required: true, index: true },
+  project: { ...ref('Project'), required: true, index: true },
+  day: { type: Number, required: true }, // 1-based, across the whole plinth plan
+  date: { type: Date, required: true },
+  phaseKey: String,
+  phaseName: String,
+  dayInPhase: Number,
+  phaseDays: Number,
+  title: String,
+  planned: { quantity: Number, unit: String, label: String },
+  crew: [{ trade: String, count: Number, _id: false }],
+  machines: [{ name: String, count: Number, kind: String, _id: false }],
+  items: [{
+    text: { type: String, required: true },
+    done: { type: Boolean, default: false },
+    source: { type: String, enum: ['plan', 'added'], default: 'plan' },
+    addedBy: ref('User'),
+    doneBy: ref('User'),
+    doneAt: Date,
+  }],
+  actualQuantity: Number,
+  note: String,
+  status: { type: String, enum: ['Pending', 'In Progress', 'Done'], default: 'Pending' },
+  completedAt: Date,
+  updatedBy: ref('User'),
+}, opts);
+plinthDaySchema.index({ report: 1, day: 1 }, { unique: true });
+export const PlinthDay = model('PlinthDay', plinthDaySchema);
 
 // Configurable business rules (single document, key = 'rules').
 const settingSchema = new Schema({

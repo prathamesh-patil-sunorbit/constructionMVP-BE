@@ -26,7 +26,7 @@ export const SEVERITIES = ['Low', 'Medium', 'High'];
 export const AI_AGENTS = [
   'progress', 'planning', 'scheduling', 'delay', 'completion',
   'labour', 'material', 'inventory', 'equipment', 'ground', 'risk',
-  'camera', 'reporting', 'copilot',
+  'camera', 'reporting', 'copilot', 'geotech',
 ];
 export const AI_TRIGGERS = ['manual', 'scheduled', 'event', 'copilot'];
 export const AI_DECISIONS = ['Proposed', 'Accepted', 'Rejected', 'Overridden'];
@@ -37,6 +37,9 @@ export const INVENTORY_TXN_TYPES = ['opening', 'received', 'consumed', 'adjustme
 export const LABOUR_CATEGORIES = ['Skilled', 'Semi-skilled', 'Unskilled'];
 export const REPORT_KINDS = ['daily', 'weekly', 'monthly', 'delay', 'labour', 'material', 'equipment', 'health', 'management'];
 export const CAMERA_VERIFY = ['Pending', 'Accepted', 'Rejected', 'Edited'];
+export const GEOTECH_VERIFY = ['Pending', 'Accepted', 'Rejected', 'Overridden'];
+export const SOIL_CLASSES = ['soft', 'ordinary', 'hard', 'rock'];
+export const FOUNDATION_TYPES = ['isolated', 'raft', 'pile'];
 
 // ---------- 3D / 4D model ----------
 export const COMPONENT_TYPES = [

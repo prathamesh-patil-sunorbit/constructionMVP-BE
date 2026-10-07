@@ -2,11 +2,12 @@
 // API key never leaves the server process.
 
 import { Router } from 'express';
-import { AiRun, AiPrediction, AiAlert, AiConversation, AiReport, Project, Activity, ExecutionLog, InventoryItem } from '../models/index.js';
+import { AiRun, AiPrediction, AiAlert, AiConversation, AiReport, Project, Activity, ExecutionLog, InventoryItem, GeotechReport } from '../models/index.js';
 import { generateReport } from '../services/ai/reports.js';
 import { MANAGER_ROLES } from '../models/constants.js';
 import { requireRole } from '../middleware/auth.js';
 import { audit } from '../services/audit.js';
+import { createPlan, withdrawPlan } from '../services/plinth-plan.js';
 import { aiConfig, checkRateLimit } from '../services/ai/gemini.js';
 import {
   projectInsights, analyzeProject, runAgent, askCopilot, agentsForRole, canRunAgent,
@@ -120,6 +121,15 @@ router.patch('/predictions/:id/decision', requireRole(...MANAGER_ROLES, 'plannin
   prediction.decidedAt = new Date();
   if (decision === 'Overridden') prediction.override = { value, reason };
   await prediction.save();
+  // A plinth estimate decided here is decided on its report too.
+  if (prediction.kind === 'plinthEstimate') {
+    await GeotechReport.updateOne({ prediction: prediction._id }, {
+      $set: { verification: { status: decision, by: req.user._id, at: new Date(), note: decision === 'Overridden' ? `Overridden to ${value}${reason ? `: ${reason}` : ''}` : reason } },
+    });
+    const report = await GeotechReport.findOne({ prediction: prediction._id });
+    if (report && decision === 'Accepted') await createPlan(report, { user: req.user });
+    else if (report && decision !== 'Accepted') await withdrawPlan(report._id);
+  }
   await audit(req.user, `AI prediction ${decision.toLowerCase()}`, {
     entityType: 'AiPrediction', entityId: prediction._id, project: prediction.project,
     activity: prediction.activity, field: prediction.kind,

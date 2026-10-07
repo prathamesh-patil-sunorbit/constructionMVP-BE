@@ -23,7 +23,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.3",
     "morgan": "^1.12.1",
-    "multer": "^2.4.0"
+    "multer": "^2.4.0",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "mongodb-memory-server-core": "^11.3.0"
