@@ -12,6 +12,7 @@
 import { Activity, BuildingSpec, Project, ProgressUpdate, StructureNode, Estimate, ExecutionLog } from '../models/index.js';
 import { COMPONENT_CATEGORIES } from '../models/constants.js';
 import { toDay, diffDays } from '../utils/dates.js';
+import { planLevels, planFootprint, addPlanTower } from './floorplan/build.js';
 
 // Massing envelope taken from the City Life marketing issue (job 2184), not from a survey.
 // 2184-021 is a long double-loaded plate: five bays along a 1.50 m corridor, flats both sides.
@@ -520,9 +521,13 @@ export async function buildModel(projectId) {
   const allFloors = roots.flatMap((t) => (floorsOf(t._id).length ? floorsOf(t._id) : [t]));
   const { spec, sources } = resolveSpec({ stored, activities, floors: allFloors });
 
+  // An imported floor plan (DWG / DXF) replaces the City Life massing. Its footprint is the plate.
+  const floorplan = stored?.floorplan?.plans?.typical ? stored.floorplan : null;
+  const footprint = floorplan ? planFootprint(floorplan) : null;
+
   // Plate dimensions from area and aspect ratio.
-  const width = Math.sqrt(spec.plateAreaSqm * spec.aspectRatio);
-  const depth = spec.plateAreaSqm / width;
+  const width = footprint ? footprint.width : Math.sqrt(spec.plateAreaSqm * spec.aspectRatio);
+  const depth = footprint ? footprint.depth : spec.plateAreaSqm / width;
   const H = spec.floorHeightM;
 
   // Activity lookup per floor node and category.
@@ -572,8 +577,13 @@ export async function buildModel(projectId) {
 
   const massing = [];
   for (const tower of roots) {
-    const levels = cityLifeLevels(floorsOf(tower._id));
+    const levels = floorplan ? planLevels(floorplan, floorsOf(tower._id)) : cityLifeLevels(floorsOf(tower._id));
     massing.push({ tower, levels });
+    if (floorplan) {
+      addPlanTower({ push, tower, levels, floorplan, xOffset, spec, linkFor });
+      xOffset += width + spec.towerGapM;
+      continue;
+    }
     const cx = xOffset + width / 2;
     const cz = depth / 2;
     const baseHeight = spec.floorsBelow * H;
@@ -1102,10 +1112,26 @@ export async function buildModel(projectId) {
     }
     : null;
 
+  const planInfo = floorplan ? {
+    source: floorplan.source,
+    stats: floorplan.stats,
+    floors: floorplan.floors,
+    floorCount: massing[0]?.levels.filter((l) => l.storey).length || 0,
+  } : null;
+  if (floorplan) {
+    spec.plateAreaSqm = Math.round(width * depth * 10) / 10;
+    spec.aspectRatio = Math.round((width / depth) * 100) / 100;
+    sources.plateAreaSqm = `imported plan: ${floorplan.source?.originalName || 'floor plan'}`;
+    sources.aspectRatio = sources.plateAreaSqm;
+    delete sources.baysX;
+    delete sources.baysZ;
+    sources.stack = `imported plan: ${planInfo.floorCount} storeys above ground; refuge floors ${(floorplan.floors?.refuge || []).join(', ') || 'none'}`;
+  }
   return {
     project: { id: String(project._id), code: project.code, name: project.name },
     spec,
     sources,
+    floorplan: planInfo,
     stored: Boolean(stored),
     dimensions: {
       plateWidthM: Math.round(width * 10) / 10,
@@ -1124,6 +1150,8 @@ export async function buildModel(projectId) {
     activities: activityPayload,
     timeline: span && { start: span.start, end: span.end, days: diffDays(span.end, span.start) + 1 },
     categories: COMPONENT_CATEGORIES,
-    disclaimer: 'Massing of iTREND City Life from job 2184: long slab (2184-021), balconies both sides (2184-023), stack LGF + Ground + 3 podium + 21 floors (2184-001 Rev D). Floors 4, 9, 14 and 19 are refuge floors. It is not a surveyed or BIM model. Activity progress still attaches only to the floors that exist in the schedule.',
+    disclaimer: floorplan
+      ? `Generated from the uploaded floor plan (${floorplan.source?.originalName || 'drawing'}): walls, openings, rooms and furniture are read from the drawing, and floors are stacked at ${spec.floorHeightM} m. Structure above the floor plan, facade finishes and anything the drawing does not show are not modelled. It is not a surveyed or BIM model. Activity progress still attaches only to the floors that exist in the schedule.`
+      : 'Massing of iTREND City Life from job 2184: long slab (2184-021), balconies both sides (2184-023), stack LGF + Ground + 3 podium + 21 floors (2184-001 Rev D). Floors 4, 9, 14 and 19 are refuge floors. It is not a surveyed or BIM model. Activity progress still attaches only to the floors that exist in the schedule.',
   };
 }

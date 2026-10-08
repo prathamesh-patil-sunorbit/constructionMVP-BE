@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import morgan from 'morgan';
 import { connectDb } from './config/db.js';
 import { requireAuth } from './middleware/auth.js';
@@ -24,6 +25,8 @@ import { BLOCKER_TYPES, BLOCKER_STATUSES, ACTIVITY_STATUSES, HEALTH_STATES, ROLE
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
+// The 3D model response is several MB of JSON; it compresses about 20:1.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(UPLOAD_DIR));

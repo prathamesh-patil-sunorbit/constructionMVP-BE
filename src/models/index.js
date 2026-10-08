@@ -329,6 +329,8 @@ const buildingSpecSchema = new Schema({
   towerGapM: Number,
   wallColor: String,
   notes: String,
+  // Interpreted DWG / DXF floor plans (see services/floorplan). When set, replaces the City Life massing.
+  floorplan: Schema.Types.Mixed,
   updatedBy: ref('User'),
 }, opts);
 export const BuildingSpec = model('BuildingSpec', buildingSpecSchema);
