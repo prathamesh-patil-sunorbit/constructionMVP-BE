@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { IntegrationSync, Team, User } from '../models/index.js';
-import { SYNC_TYPES, TEAM_TYPES } from '../models/constants.js';
+import { HIDDEN_ROLES, HIDDEN_TEAM_TYPES, SYNC_TYPES, TEAM_TYPES } from '../models/constants.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { audit } from '../services/audit.js';
 import { colabStatus } from '../integrations/colab/client.js';
@@ -50,8 +50,10 @@ router.get('/syncs', async (req, res) => {
 
 // ---------- Teams ----------
 router.get('/teams', async (req, res) => {
-  const filter = req.query.project ? { project: req.query.project } : {};
-  res.json(await Team.find(filter).populate('lead members', 'name email role').sort({ type: 1, name: 1 }).lean());
+  const filter = { type: { $nin: HIDDEN_TEAM_TYPES }, ...(req.query.project ? { project: req.query.project } : {}) };
+  const teams = await Team.find(filter).populate('lead members', 'name email role').sort({ type: 1, name: 1 }).lean();
+  const shown = (u) => u && !HIDDEN_ROLES.includes(u.role);
+  res.json(teams.map((t) => ({ ...t, lead: shown(t.lead) ? t.lead : null, members: t.members.filter(shown) })));
 });
 
 router.post('/teams', requireRole('admin', 'project_manager'), async (req, res) => {

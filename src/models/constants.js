@@ -1,5 +1,9 @@
 export const ROLES = ['admin', 'project_manager', 'site_manager', 'site_engineer', 'planning_engineer', 'estimation_engineer'];
 export const MANAGER_ROLES = ['admin', 'project_manager', 'site_manager'];
+// Demo: these roles, their users and their teams are left out of lists. Empty the arrays to show them again
+// (and HIDDEN_ROLES in frontend/src/lib/types.ts).
+export const HIDDEN_ROLES = ['planning_engineer', 'estimation_engineer'];
+export const HIDDEN_TEAM_TYPES = ['Planning', 'Estimation'];
 
 export const TEAM_TYPES = ['Planning', 'Estimation', 'Execution'];
 export const DATA_SOURCES = ['manual', 'seed', 'colab', 'msproject', 'import'];

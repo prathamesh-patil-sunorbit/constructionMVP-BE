@@ -50,6 +50,7 @@ const EXTRACTION_SHAPE = `Return one JSON object with exactly these keys (use nu
   "bearingCapacity": { "value": number, "unit": "kN/m2" | "t/m2" | "kg/cm2", "depthM": number or null, "sourceText": "short quote", "page": number or null } or null,
   "recommendedFoundation": "isolated" | "raft" | "pile" | null,
   "recommendedDepthM": number or null,
+  "plinthAreaSqm": number or null,
   "evidence": { "groundwater": { "quote": "string", "page": number } or null, "rock": same or null, "foundation": same or null, "depth": same or null },
   "keyFindings": [{ "label": "string", "value": "string as printed", "page": number or null }],
   "notes": "string or null"
@@ -70,6 +71,8 @@ Use null for anything the document does not state.
   "pile" for piles; null if the report does not recommend one.
 - recommendedDepthM: the recommended founding or excavation depth in metres, or the depth of the stratum the report
   says the foundation should rest on.
+- plinthAreaSqm: the building footprint or plinth area in square metres, only if the report states it (convert sq.ft
+  by dividing by 10.764). Do not use the plot area or the site area.
 - page: the PDF page number the fact is printed on (1 = first page of the file).
 - evidence: a short quote and page for the groundwater, rock, foundation and depth facts.
 - keyFindings: other useful engineering facts as printed (settlement, slopes, concrete grade, exposure, rock strength).
@@ -146,6 +149,7 @@ export function normaliseFacts(raw = {}) {
     bearingCapacity: bc,
     recommendedFoundation: foundation,
     recommendedDepthM: depth(raw.recommendedDepthM),
+    plinthAreaSqm: num(raw.plinthAreaSqm) > 0 && num(raw.plinthAreaSqm) <= 100000 ? num(raw.plinthAreaSqm) : null,
     evidence: {
       groundwater: evidenceOf(ev.groundwater),
       rock: evidenceOf(ev.rock),
@@ -501,7 +505,7 @@ function insufficient(key, name, reason) {
   return { key, name, insufficientData: true, reason, quantity: null, days: 0, workers: [], workerTotal: 0, machines: [], vehicles: [], basis: [reason] };
 }
 
-export function calculateEstimate({ facts, plinthAreaSqm, depthM, depthSource, rules, learning }) {
+export function calculateEstimate({ facts, plinthAreaSqm, areaSource = 'user', depthM, depthSource, rules, learning }) {
   const g = rules.ai.geotech;
   const A = plinthAreaSqm;
   const D = depthM;
@@ -671,6 +675,7 @@ export function calculateEstimate({ facts, plinthAreaSqm, depthM, depthSource, r
 
   if (soil.dewatering) warnings.push({ level: 'warning', text: `Water table (${facts.groundwaterDepthM} m) is ${facts.groundwaterDepthM < D ? 'above' : 'at'} the excavation bottom (${D} m): keep a dewatering pump running and protect the PCC from water.` });
   if (soil.class === 'rock') warnings.push({ level: 'warning', text: 'Rock within the excavation: breakers slow digging; check for controlled blasting permissions if the volume is large.' });
+  if (areaSource === 'default') warnings.push({ level: 'attention', text: `Plinth area not given and not stated in the report: ${A} m² assumed. Enter the real area for usable quantities.` });
   if (depthSource === 'default') warnings.push({ level: 'attention', text: `Excavation depth not given and not stated in the report: ${D} m assumed.` });
   if (facts.completeness.missing.length) {
     warnings.push({ level: 'attention', text: `Not stated in the report: ${facts.completeness.missing.map((k) => ({ layers: 'soil layers', groundwaterDepthM: 'water table', rockOrBoulderPresent: 'rock/boulders', bearingCapacity: 'bearing capacity', recommendedFoundation: 'foundation type' })[k]).join(', ')}.` });
@@ -679,12 +684,12 @@ export function calculateEstimate({ facts, plinthAreaSqm, depthM, depthSource, r
   // Confidence: how much of the report was readable, how much is assumed, how much is learned.
   const readShare = facts.completeness.found / facts.completeness.of;
   const learnedShare = learned?.weight ?? 0;
-  const confidence = Math.round(Math.min(95, 35 + 40 * readShare + 15 * learnedShare + (foundation.source === 'report' ? 5 : 0) - (partial ? 20 : 0) - (depthSource === 'default' ? 5 : 0)));
+  const confidence = Math.round(Math.min(95, 35 + 40 * readShare + 15 * learnedShare + (foundation.source === 'report' ? 5 : 0) - (partial ? 20 : 0) - (depthSource === 'default' ? 5 : 0) - (areaSource === 'default' ? 15 : 0)));
 
   return {
     soil,
     foundation: { ...foundation, label: FOUNDATION_LABELS[foundation.type] },
-    inputs: { plinthAreaSqm: A, depthM: D, depthSource },
+    inputs: { plinthAreaSqm: A, areaSource, depthM: D, depthSource },
     excavation: { inSituVolumeM3: round(inSitu), looseVolumeM3: round(loose), days: excDays, jcbs, ratePerJcbDay: round(perJcb, 0) },
     phases,
     totals,
@@ -793,7 +798,7 @@ export async function runGeotechAgent({ projectId, user, file, source = 'upload'
     project: projectId, uploadedBy: user?._id, source,
     file: file ? { originalName: file.originalName, filename: file.filename, url: file.url, mimetype: file.mimetype, size: file.size } : undefined,
     extraction: { status: read.status, reason: read.reason, model: read.model, facts: read.facts || null },
-    inputs: { plinthAreaSqm, depthM: depthM ?? null },
+    inputs: { plinthAreaSqm: plinthAreaSqm ?? null, areaSource: plinthAreaSqm != null ? 'user' : null, depthM: depthM ?? null },
   });
 
   let usage = read.usage || {};
@@ -823,8 +828,18 @@ export async function runGeotechAgent({ projectId, user, file, source = 'upload'
   report.inputs.depthUsedM = depthUsed;
   report.inputs.depthSource = depthSource;
 
+  // Plinth area: as typed, else stated in the report, else the default (flagged on the estimate).
+  let areaSource = 'user';
+  if (plinthAreaSqm == null) {
+    plinthAreaSqm = facts.plinthAreaSqm ?? null;
+    areaSource = plinthAreaSqm != null ? 'report' : 'default';
+    if (plinthAreaSqm == null) plinthAreaSqm = g.defaultPlinthAreaSqm;
+  }
+  report.inputs.plinthAreaSqm = plinthAreaSqm;
+  report.inputs.areaSource = areaSource;
+
   const learning = await calibrate(rules);
-  const estimate = calculateEstimate({ facts, plinthAreaSqm, depthM: depthUsed, depthSource, rules, learning });
+  const estimate = calculateEstimate({ facts, plinthAreaSqm, areaSource, depthM: depthUsed, depthSource, rules, learning });
   const head = headline(estimate);
   report.estimate = estimate;
 

@@ -2,12 +2,13 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/index.js';
 import { requireRole } from '../middleware/auth.js';
+import { HIDDEN_ROLES } from '../models/constants.js';
 import { audit } from '../services/audit.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const filter = req.query.role ? { role: req.query.role } : {};
+  const filter = { role: { $nin: HIDDEN_ROLES, ...(req.query.role ? { $eq: req.query.role } : {}) } };
   res.json(await User.find(filter).sort({ role: 1, name: 1 }));
 });
 

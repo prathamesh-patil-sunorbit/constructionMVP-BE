@@ -71,6 +71,7 @@ export const DEFAULT_RULES = {
     // until the estimation team confirms them; every figure in an estimate names its rate.
     geotech: {
       defaultDepthM: 1.5, // used when neither the user nor the report gives a depth
+      defaultPlinthAreaSqm: 400, // used when neither the user nor the report gives a plinth area
       softSbcBelowKnM2: 100, // safe bearing capacity below this => soft soil
       hardSbcFromKnM2: 250, // at or above this => hard strata
       raftBelowSbcKnM2: 100, // below this a raft is assumed even if the report does not say so

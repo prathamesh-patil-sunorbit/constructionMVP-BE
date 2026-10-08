@@ -539,7 +539,8 @@ const geotechReportSchema = new Schema({
     facts: Schema.Types.Mixed,
   },
   inputs: {
-    plinthAreaSqm: Number,
+    plinthAreaSqm: Number, // as typed, else read from the report, else the default
+    areaSource: String, // user | report | default
     depthM: Number, // as typed by the user, if any
     depthUsedM: Number,
     depthSource: String,

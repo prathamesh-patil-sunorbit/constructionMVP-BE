@@ -49,8 +49,11 @@ async function parseInputs(body) {
   if (!project || !mongoose.isValidObjectId(project) || !(await Project.exists({ _id: project }))) {
     throw new HttpError(400, 'A valid project is required');
   }
-  const area = Number(body.plinthAreaSqm);
-  if (!Number.isFinite(area) || area <= 0 || area > 100000) throw new HttpError(400, 'Plinth area must be between 1 and 100,000 m²');
+  let area = null;
+  if (body.plinthAreaSqm !== undefined && body.plinthAreaSqm !== null && body.plinthAreaSqm !== '') {
+    area = Number(body.plinthAreaSqm);
+    if (!Number.isFinite(area) || area <= 0 || area > 100000) throw new HttpError(400, 'Plinth area must be between 1 and 100,000 m²');
+  }
   let depth = null;
   if (body.depthM !== undefined && body.depthM !== null && body.depthM !== '') {
     depth = Number(body.depthM);
@@ -120,7 +123,9 @@ router.post('/:id/retry', limitModelCalls, async (req, res) => {
   const file = { ...old.file.toObject(), base64: fs.readFileSync(filePath).toString('base64') };
   const report = await runGeotechAgent({
     projectId: old.project, user: req.user, file, source: 'upload',
-    plinthAreaSqm: old.inputs.plinthAreaSqm, depthM: old.inputs.depthM ?? null,
+    // Re-use the area only if the user typed it; a report or default area is worked out again.
+    plinthAreaSqm: !old.inputs.areaSource || old.inputs.areaSource === 'user' ? old.inputs.plinthAreaSqm ?? null : null,
+    depthM: old.inputs.depthM ?? null,
   });
   // The earlier attempt is replaced by the new one; its AiRun stays for the audit trail.
   if (old.prediction) await AiPrediction.deleteOne({ _id: old.prediction, status: 'Proposed' });
