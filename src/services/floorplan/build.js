@@ -4,6 +4,10 @@
 
 const round = (n) => Math.round(n * 100) / 100;
 
+// Facade tints in vertical blocks, like the differently shaded towers on the elevation render.
+const FACADE = ['#f3ede2', '#dfe7f1', '#f8f8f5', '#d4dce8', '#efe4d2'];
+const facadeTint = (x, z) => FACADE[(Math.floor(x / 7) + Math.floor(z / 17)) % FACADE.length];
+
 // Floor numbers each plan applies to, from the drawing's "TYPICAL FLOORS - ..." notes.
 export function planLevels(floorplan, dbFloors) {
   const byName = new Map(dbFloors.map((f) => [f.name, f]));
@@ -11,7 +15,7 @@ export function planLevels(floorplan, dbFloors) {
   const listed = [...(floorplan.floors?.typical || []), ...(floorplan.floors?.refuge || [])];
   const top = Math.max(floorplan.floorCount || 0, ...listed, 1);
   const hasRefuge = Boolean(floorplan.plans.refuge);
-  const levels = [{ name: 'Ground', kind: 'ground', plan: 'typical' }];
+  const levels = [{ name: 'Ground', kind: 'ground', plan: 'typical' }, { name: 'Podium', kind: 'podium', plan: 'typical' }];
   for (let n = 1; n <= top; n++) {
     const isRefuge = hasRefuge && refuge.has(n);
     levels.push({ name: `Floor ${n}`, kind: isRefuge ? 'refuge' : 'residential', storey: n, plan: isRefuge ? 'refuge' : 'typical' });
@@ -32,7 +36,9 @@ export function planFootprint(floorplan) {
 export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLabel, kind, ids, furnish, top }) {
   const wallH = H - slabT;
   const X = (cx) => round(xOffset + cx);
-  const podium = kind === 'ground';
+  const podium = kind === 'ground' || kind === 'podium';
+  // Refuge floors get a warm band so they read as a stripe on the facade.
+  const tint = (x, z) => (kind === 'refuge' ? '#ecdfc2' : facadeTint(x, z));
 
   for (const [x, z, w, d] of plan.slab) {
     push({
@@ -58,6 +64,7 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
       ...meta, type: 'wall', category: 'masonry',
       position: [X(w.cx), round(y0 + wallH / 2), w.cz],
       size: [w.w, wallH, w.d],
+      ...(w.exterior && !podium ? { color: tint(w.cx, w.cz) } : {}),
       label: w.exterior ? `${floorLabel} facade wall` : w.flat ? `${floorLabel} flat ${w.flat} wall` : `${floorLabel} core wall`,
       activityIds: ids.masonry,
     });
@@ -66,7 +73,7 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
   // Parapets at balcony edges, and a roof parapet on the top storey.
   for (const p of plan.parapets) {
     push({
-      ...meta, type: 'parapet', category: 'masonry',
+      ...meta, type: 'parapet', category: 'masonry', ...(podium ? {} : { subtype: 'glass' }),
       position: [X(p.cx), round(y0 + 0.5), p.cz],
       size: [p.w, 1.0, p.d],
       label: `${floorLabel} balcony parapet`, activityIds: ids.masonry,
@@ -75,10 +82,10 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
   if (top) {
     for (const p of plan.parapets) {
       push({
-        ...meta, type: 'parapet', category: 'masonry',
-        position: [X(p.cx), round(y0 + H + 0.5), p.cz],
-        size: [p.w, 1.0, p.d],
-        label: `${floorLabel} roof parapet`, activityIds: ids.masonry,
+        ...meta, type: 'parapet', category: 'masonry', subtype: 'gold',
+        position: [X(p.cx), round(y0 + H + 0.9), p.cz],
+        size: [round(p.w + 0.1), 1.8, round(p.d + 0.1)],
+        label: `${floorLabel} roof crown`, activityIds: ids.masonry,
       });
     }
   }
@@ -106,6 +113,7 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
           ...meta, type: 'wall', category: 'masonry',
           position: [X(o.cx), round(y0 + sill / 2), o.cz],
           size: dims(round(len), sill, thick),
+          ...(o.exterior && !podium ? { color: tint(o.cx, o.cz) } : {}),
           label: o.exterior ? `${floorLabel} facade wall` : `${tag} wall`, activityIds: ids.masonry,
         });
       }
@@ -113,6 +121,7 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
         ...meta, type: 'wall', category: 'masonry',
         position: [X(o.cx), round(y0 + (head + wallH) / 2), o.cz],
         size: dims(round(len), round(wallH - head), thick),
+        ...(o.exterior && !podium ? { color: tint(o.cx, o.cz) } : {}),
         label: o.exterior ? `${floorLabel} facade wall` : `${tag} wall`, activityIds: ids.masonry,
       });
     } else {
@@ -209,13 +218,57 @@ export function addPlanTower({ push, tower, levels, floorplan, xOffset, spec, li
     push({ ...site, type: 'tree', subtype: 'crown', position: [round(x), 2.7, round(z)], size: [1.8, 1.8, 1.8], label: `${tower.name}: canopy ${i + 1}` });
   });
 
+  const podiumLevels = levels.filter((l) => l.kind === 'ground' || l.kind === 'podium').length;
+  const podiumTop = podiumLevels * H;
+  const towerH = (levels.length - podiumLevels) * H;
+  const typical = floorplan.plans.typical;
+
+  // Gold vertical fins at the ends of the balcony runs, one tall piece per position (not per floor),
+  // rising a little above the roof like the crown on the elevation render.
+  const fins = new Map();
+  for (const q of typical.parapets) {
+    if (Math.max(q.w, q.d) < 2) continue;
+    const alongX = q.w >= q.d;
+    for (const sign of [-1, 1]) {
+      const fx = alongX ? q.cx + (sign * q.w) / 2 : q.cx;
+      const fz = alongX ? q.cz : q.cz + (sign * q.d) / 2;
+      const key = `${Math.round(fx / 1.8)}:${Math.round(fz / 1.8)}`;
+      if (!fins.has(key)) fins.set(key, { fx, fz, alongX, span: alongX ? q.d : q.w });
+    }
+  }
+  for (const f of fins.values()) {
+    const height = towerH + 3;
+    push({
+      tower: tower.name, floorName: null, floorIndex: -1, category: 'masonry', activityIds: [],
+      type: 'fin', subtype: 'gold',
+      position: [round(xOffset + f.fx), round(podiumTop + height / 2), round(f.fz)],
+      size: f.alongX ? [0.55, height, round(Math.max(0.5, f.span) + 0.6)] : [round(Math.max(0.5, f.span) + 0.6), height, 0.55],
+      label: `${tower.name} facade fin`,
+    });
+  }
+
+  // Podium deck on the front with a pool, hedges and trees, as on the render.
+  const deckD = 14;
+  const deckW = width + 8;
+  const deckZ = depth + deckD / 2 - 0.5;
+  push({ ...site, type: 'band', category: 'structure', skin: 'podium', position: [round(cx), round(podiumTop / 2), round(deckZ)], size: [round(deckW), round(podiumTop), deckD], label: `${tower.name}: podium front` });
+  push({ ...site, type: 'band', category: 'structure', subtype: 'gold', position: [round(cx), round(podiumTop + 0.1), round(deckZ)], size: [round(deckW + 0.4), 0.2, deckD + 0.4], label: `${tower.name}: podium deck edge` });
+  push({ ...site, type: 'base', subtype: 'pool', position: [round(cx + width * 0.12), round(podiumTop + 0.18), round(depth + 6)], size: [round(Math.min(18, width * 0.4)), 0.16, 5.5], label: `${tower.name}: swimming pool` });
+  for (let k = 0; k < 6; k++) {
+    const tx = xOffset - 2 + (k + 0.5) * ((width + 4) / 6);
+    const tz = depth + 12;
+    push({ ...site, type: 'tree', subtype: 'trunk', position: [round(tx), round(podiumTop + 0.9), round(tz)], size: [0.3, 1.8, 0.3], label: `${tower.name}: deck tree ${k + 1}` });
+    push({ ...site, type: 'tree', subtype: 'crown', position: [round(tx), round(podiumTop + 2.6), round(tz)], size: [2.2, 2.2, 2.2], label: `${tower.name}: deck canopy ${k + 1}` });
+  }
+  push({ ...site, type: 'hedge', position: [round(cx), round(podiumTop + 0.5), round(depth + deckD - 1)], size: [round(deckW - 1), 0.8, 0.7], label: `${tower.name}: deck hedge` });
+
   levels.forEach((level, i) => {
     const floor = level.node || { _id: `plan-${tower._id}-${level.name}`, name: level.name };
     const link = (category) => linkFor(floor._id, tower._id, category);
     const meta = {
       tower: tower.name, floorName: floor.name, floorIndex: i, floorNode: String(floor._id),
       storey: level.storey ?? null,
-      skin: level.kind === 'ground' ? 'podium' : 'tower',
+      skin: level.kind === 'ground' || level.kind === 'podium' ? 'podium' : 'tower',
     };
     addPlanStorey({
       push,
@@ -228,7 +281,7 @@ export function addPlanTower({ push, tower, levels, floorplan, xOffset, spec, li
       floorLabel: floor.name,
       kind: level.kind,
       ids: { slab: link('slab'), structure: link('structure'), masonry: link('masonry'), openings: link('openings'), finishes: link('finishes') },
-      furnish: level.kind !== 'ground' && (furnishAll || level.detail),
+      furnish: level.kind !== 'ground' && level.kind !== 'podium' && (furnishAll || level.detail),
       top: i === levels.length - 1,
     });
   });
