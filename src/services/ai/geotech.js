@@ -193,7 +193,7 @@ const readScore = (facts, issues) => facts.completeness.found * 10 + Math.min(fa
 // make the model's own PDF reader return almost nothing, while their text is perfectly readable.
 // Returns null for scanned PDFs with no usable text, which then go to the model as a file.
 const MAX_TEXT_CHARS = 200_000;
-async function pdfText(fileBase64) {
+export async function pdfText(fileBase64) {
   try {
     const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(fileBase64, 'base64')));
     const { totalPages, text } = await extractText(pdf, { mergePages: false });
@@ -285,7 +285,8 @@ export async function extractFacts({ fileBase64, mimeType, originalName }) {
   facts.readQuality = { attempts: tried, issues, via, pages: text?.pages ?? null };
   if (!facts.isGeotechnicalReport || facts.completeness.found === 0) {
     return {
-      status: 'Not read', reason: 'The file did not contain recognisable soil information (bore log, water table, bearing capacity or foundation recommendation).',
+      status: 'Not read', reason: 'The file did not contain recognisable soil information (bore log, water table, bearing capacity or foundation recommendation). '
+        + 'If this is a weather report, upload it in the “Weather report (optional)” box next to the soil report, or in the Weather panel of an estimate.',
       model, usage, latencyMs,
     };
   }

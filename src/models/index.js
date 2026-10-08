@@ -546,6 +546,19 @@ const geotechReportSchema = new Schema({
     depthSource: String,
   },
   estimate: Schema.Types.Mixed,
+  // Rain buffer on the estimate (services/weather.js): dated schedule from the start date.
+  weather: Schema.Types.Mixed,
+  // Weather report uploaded for this site; Gemini reads it into daily rain, which wins over the forecast.
+  weatherUpload: {
+    file: { originalName: String, filename: String, url: String, mimetype: String, size: Number },
+    status: { type: String, enum: ['Read', 'Not read'] },
+    reason: String,
+    title: String,
+    location: String,
+    days: Schema.Types.Mixed,
+    by: ref('User'),
+    at: Date,
+  },
   narration: Schema.Types.Mixed, // AI-written explanation of the calculated estimate
   verification: {
     status: { type: String, enum: GEOTECH_VERIFY, default: 'Pending' },
@@ -580,6 +593,8 @@ const plinthDaySchema = new Schema({
   dayInPhase: Number,
   phaseDays: Number,
   title: String,
+  // Set on days the weather takes: rain, light (slow wet day), recovery (dry-out) or buffer.
+  weather: { kind: String, rainMm: Number, note: String },
   planned: { quantity: Number, unit: String, label: String },
   crew: [{ trade: String, count: Number, _id: false }],
   machines: [{ name: String, count: Number, kind: String, _id: false }],

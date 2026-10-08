@@ -6,13 +6,14 @@ import path from 'node:path';
 import mongoose from 'mongoose';
 import { Router } from 'express';
 import multer from 'multer';
-import { AiPrediction, GeotechReport, Project } from '../models/index.js';
+import { AiPrediction, GeotechReport, PlinthDay, Project } from '../models/index.js';
 import { MANAGER_ROLES } from '../models/constants.js';
 import { requireRole, HttpError } from '../middleware/auth.js';
 import { audit } from '../services/audit.js';
 import { aiConfig, checkRateLimit, quotaStatus } from '../services/ai/gemini.js';
 import { runGeotechAgent, learningSummary } from '../services/ai/geotech.js';
-import { createPlan, withdrawPlan } from '../services/plinth-plan.js';
+import { createPlan, replan, withdrawPlan } from '../services/plinth-plan.js';
+import { readWeatherReport, weatherFor } from '../services/weather.js';
 import { addDays, toDay, today } from '../utils/dates.js';
 import { UPLOAD_DIR } from './activities.js';
 
@@ -32,9 +33,15 @@ const upload = multer({
   },
 });
 // Turn multer's own errors (e.g. file too large) into 400s instead of 500s.
-const uploadReport = (req, res, next) => upload.single('file')(req, res, (err) => {
+const multerErrors = (next) => (err) => {
   if (err instanceof multer.MulterError) return next(new HttpError(400, err.code === 'LIMIT_FILE_SIZE' ? 'File is larger than 12 MB' : err.message));
   next(err);
+};
+const uploadReport = (req, res, next) => upload.single('file')(req, res, multerErrors(next));
+// New estimate: the soil report, plus an optional weather report for the rain buffer.
+const uploadEstimate = (req, res, next) => upload.fields([{ name: 'file', maxCount: 1 }, { name: 'weather', maxCount: 1 }])(req, res, (err) => {
+  if (!err) req.file = req.files?.file?.[0];
+  multerErrors(next)(err);
 });
 
 function limitModelCalls(req, res, next) {
@@ -62,6 +69,48 @@ async function parseInputs(body) {
   return { project, plinthAreaSqm: area, depthM: depth };
 }
 
+// Rain buffer from `startDate` (today until the estimate is accepted). If the weather cannot be
+// worked out the estimate simply has no buffer; it is never blocked by it.
+async function addWeather(report, startDate) {
+  if (!report?.estimate) return report;
+  try {
+    report.weather = await weatherFor(report, { startDate });
+    report.markModified('weather');
+    await report.save();
+  } catch (error) {
+    console.info(`Weather buffer for ${report._id} failed: ${error.message}`);
+  }
+  return report;
+}
+
+// Read an uploaded weather report onto the report; it replaces any earlier one.
+async function attachWeather(report, upload, user) {
+  const read = await readWeatherReport({
+    fileBase64: fs.readFileSync(upload.path).toString('base64'), mimeType: upload.mimetype, originalName: upload.originalname,
+  });
+  const previous = report.weatherUpload?.file?.filename;
+  report.weatherUpload = {
+    file: { originalName: upload.originalname, filename: upload.filename, url: `/uploads/${upload.filename}`, mimetype: upload.mimetype, size: upload.size },
+    status: read.status, reason: read.reason, title: read.title, location: read.location, days: read.days || [], by: user._id, at: new Date(),
+  };
+  await report.save();
+  if (previous && previous !== upload.filename) fs.rm(path.join(UPLOAD_DIR, path.basename(previous)), { force: true }, () => {});
+  await audit(user, 'Weather report uploaded', {
+    entityType: 'GeotechReport', entityId: report._id, project: report.project, comment: upload.originalname,
+    newValue: { read: read.status, days: read.days?.length ?? 0 },
+  });
+  return read;
+}
+
+// Start of the schedule the buffer is laid on: the published plan's first day, else today.
+async function scheduleStart(report) {
+  if (report.verification?.status === 'Accepted') {
+    const first = await PlinthDay.findOne({ report: report._id }).sort({ day: 1 }).lean();
+    if (first) return first.date;
+  }
+  return today();
+}
+
 const populated = (id) => GeotechReport.findById(id)
   .populate('uploadedBy', 'name role').populate('verification.by', 'name role').populate('actual.recordedBy', 'name role')
   .populate('prediction', 'status override confidence').lean();
@@ -78,7 +127,8 @@ router.get('/', async (req, res) => {
   res.json({ reports, learning, ai: { configured: aiConfig().configured, quota: quotaStatus() } });
 });
 
-router.post('/', uploadReport, limitModelCalls, async (req, res) => {
+router.post('/', uploadEstimate, limitModelCalls, async (req, res) => {
+  const weather = req.files?.weather?.[0];
   try {
     if (!req.file) throw new HttpError(400, 'Attach the geotechnical report (PDF or image)');
     const inputs = await parseInputs(req.body);
@@ -88,6 +138,10 @@ router.post('/', uploadReport, limitModelCalls, async (req, res) => {
       base64: fs.readFileSync(req.file.path).toString('base64'),
     };
     const report = await runGeotechAgent({ projectId: inputs.project, user: req.user, file, source: 'upload', ...inputs });
+    // The weather report only matters once there is an estimate to put a buffer on.
+    if (weather && report.estimate) await attachWeather(report, weather, req.user);
+    else if (weather) fs.rm(weather.path, { force: true }, () => {});
+    await addWeather(report, today());
     await audit(req.user, 'Geotechnical report uploaded', {
       entityType: 'GeotechReport', entityId: report._id, project: inputs.project,
       newValue: { plinthAreaSqm: inputs.plinthAreaSqm, depthM: inputs.depthM, read: report.extraction.status }, comment: file.originalName,
@@ -96,13 +150,14 @@ router.post('/', uploadReport, limitModelCalls, async (req, res) => {
   } catch (error) {
     // A rejected request should not leave an orphaned upload behind.
     if (req.file && !(await GeotechReport.exists({ 'file.filename': req.file.filename }))) fs.rm(req.file.path, { force: true }, () => {});
+    if (weather && !(await GeotechReport.exists({ 'weatherUpload.file.filename': weather.filename }))) fs.rm(weather.path, { force: true }, () => {});
     throw error;
   }
 });
 
 router.post('/sample', limitModelCalls, async (req, res) => {
   const inputs = await parseInputs(req.body || {});
-  const report = await runGeotechAgent({ projectId: inputs.project, user: req.user, source: 'sample', ...inputs });
+  const report = await addWeather(await runGeotechAgent({ projectId: inputs.project, user: req.user, source: 'sample', ...inputs }), today());
   await audit(req.user, 'Sample plinth estimate run', {
     entityType: 'GeotechReport', entityId: report._id, project: inputs.project, newValue: { plinthAreaSqm: inputs.plinthAreaSqm, depthM: inputs.depthM },
   });
@@ -127,6 +182,8 @@ router.post('/:id/retry', limitModelCalls, async (req, res) => {
     plinthAreaSqm: !old.inputs.areaSource || old.inputs.areaSource === 'user' ? old.inputs.plinthAreaSqm ?? null : null,
     depthM: old.inputs.depthM ?? null,
   });
+  if (old.weatherUpload?.status) report.weatherUpload = old.weatherUpload.toObject();
+  await addWeather(report, today());
   // The earlier attempt is replaced by the new one; its AiRun stays for the audit trail.
   if (old.prediction) await AiPrediction.deleteOne({ _id: old.prediction, status: 'Proposed' });
   await old.deleteOne();
@@ -165,6 +222,8 @@ router.patch('/:id/verify', async (req, res) => {
     entityType: 'GeotechReport', entityId: report._id, project: report.project, field: 'verification',
     previousValue: previous, newValue: status, comment: note,
   });
+  // The rain buffer is laid on the chosen start date before the plan is built from it.
+  if (status === 'Accepted') await addWeather(report, startDate);
   // Accepting puts the day-by-day plan in front of the site engineer; rejecting takes it back.
   const plan = status === 'Accepted'
     ? await createPlan(report, { startDate, user: req.user })
@@ -174,6 +233,49 @@ router.patch('/:id/verify', async (req, res) => {
       entityType: 'GeotechReport', entityId: report._id, project: report.project, newValue: { days: plan.created, start: startDate },
     });
   }
+  res.json({ ...(await populated(report._id)), plan });
+});
+
+// ---------- Weather ----------
+
+// Upload a weather report for the site. Its daily rain replaces the forecast on the days it covers.
+router.post('/:id/weather', uploadReport, limitModelCalls, async (req, res) => {
+  const report = await GeotechReport.findById(req.params.id);
+  try {
+    if (!report) throw new HttpError(404, 'Report not found');
+    if (!report.estimate) throw new HttpError(400, 'This report has no estimate to add weather to');
+    if (!req.file) throw new HttpError(400, 'Attach the weather report (PDF or image)');
+  } catch (error) {
+    if (req.file) fs.rm(req.file.path, { force: true }, () => {});
+    throw error;
+  }
+  await attachWeather(report, req.file, req.user);
+  await addWeather(report, await scheduleStart(report));
+  const plan = await replan(report);
+  res.json({ ...(await populated(report._id)), plan });
+});
+
+// Remove the uploaded weather report and go back to the forecast.
+router.delete('/:id/weather', async (req, res) => {
+  const report = await GeotechReport.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  const filename = report.weatherUpload?.file?.filename;
+  report.weatherUpload = undefined;
+  await report.save();
+  if (filename) fs.rm(path.join(UPLOAD_DIR, path.basename(filename)), { force: true }, () => {});
+  await addWeather(report, await scheduleStart(report));
+  const plan = await replan(report);
+  await audit(req.user, 'Weather report removed', { entityType: 'GeotechReport', entityId: report._id, project: report.project });
+  res.json({ ...(await populated(report._id)), plan });
+});
+
+// Fetch the latest forecast and work the buffer out again.
+router.post('/:id/weather/refresh', async (req, res) => {
+  const report = await GeotechReport.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  if (!report.estimate) return res.status(400).json({ error: 'This report has no estimate' });
+  await addWeather(report, await scheduleStart(report));
+  const plan = await replan(report);
   res.json({ ...(await populated(report._id)), plan });
 });
 

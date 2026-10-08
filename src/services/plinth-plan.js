@@ -6,7 +6,7 @@
 // do not support. Engineers can add their own items on top.
 
 import { GeotechReport, Notification, PlinthDay, User } from '../models/index.js';
-import { addDays, fmt, toDay, today } from '../utils/dates.js';
+import { addDays, fmt, sameDay, toDay, today } from '../utils/dates.js';
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -85,10 +85,51 @@ function titleFor(p, d) {
   return `${stage} ${gerundFor(p)}${per}`;
 }
 
+// Days the weather takes (see services/weather.js): what the engineer does instead of the phase work.
+const WEATHER_TITLES = {
+  rain: (p) => `Rain day — ${p.key === 'excavation' ? 'no digging' : p.key === 'backfill' ? 'no backfilling' : `${p.name.toLowerCase()} on hold`}`,
+  recovery: (p) => `Dry-out day after rain — get the ${p.key === 'excavation' ? 'pit' : 'site'} ready for ${p.name.toLowerCase()}`,
+  buffer: (p) => `Weather buffer — ${p.name.toLowerCase()}`,
+};
+
+function weatherItemsFor(x, p, est) {
+  const items = [];
+  const add = (text) => items.push(text);
+  if (x.note && x.kind !== 'recovery') add(x.note); // dry-out steps are listed below instead
+  if (x.kind === 'rain') {
+    if (p.key === 'excavation') {
+      add('Cover the pit edges and spoil heaps with tarpaulin');
+      add('Keep everyone out of the pit; check the sides for slips');
+      if (est.soil.dewatering) add('Keep the dewatering pump running');
+    } else if (p.key === 'backfill') {
+      add('Cover the stockpiled fill so it does not get soaked');
+    } else {
+      add('Carry on with steel fixing and shuttering under cover; do not pour concrete');
+      add('Cover fresh concrete with polythene sheets');
+    }
+  } else if (x.kind === 'recovery') {
+    if (p.key === 'excavation') {
+      add('Pump out standing water from the pit');
+      add('Remove slush and loose soil from the pit bottom');
+      add('Check the pit sides are stable before digging again');
+    } else {
+      add('Check the ground is dry and firm before restarting');
+    }
+  } else if (x.kind === 'buffer') {
+    add('If rain stopped work earlier, finish the lost work today');
+    add('If nothing was lost, use the day to catch up or prepare the next phase');
+  }
+  add('Write the actual weather in the day note');
+  return items;
+}
+
 /** Pure: one document body per working day, in order. */
 export function buildDays(report, startDate) {
   const est = report.estimate;
   const start = toDay(startDate);
+  // With a weather buffer for this start date, the dated schedule (rain, dry-out and buffer days) is used.
+  const schedule = report.weather?.schedule?.length && sameDay(report.weather.start, start) ? report.weather.schedule : null;
+  if (schedule) return buildWeatherDays(report, schedule);
   const out = [];
   for (const p of est.phases) {
     if (p.insufficientData) continue; // nothing to plan; the estimate already says what is missing
@@ -116,6 +157,42 @@ export function buildDays(report, startDate) {
   }
   // Days are numbered across the plan; with a skipped (insufficient) phase the numbers have a gap, so renumber.
   return out.map((doc, i) => ({ ...doc, day: i + 1, date: addDays(start, i) }));
+}
+
+function buildWeatherDays(report, schedule) {
+  const est = report.estimate;
+  const out = [];
+  for (const p of est.phases) {
+    if (p.insufficientData) continue;
+    const mine = schedule.filter((x) => x.phaseKey === p.key);
+    const working = (x) => x.kind === 'work' || x.kind === 'light';
+    // Checklist targets are spread over the days that can actually be worked.
+    const wp = { ...p, days: Math.max(1, mine.filter(working).length) };
+    let d = 0;
+    mine.forEach((x, i) => {
+      if (working(x)) d += 1;
+      out.push({
+        report: report._id,
+        project: report.project,
+        date: toDay(x.date),
+        phaseKey: p.key,
+        phaseName: p.name,
+        dayInPhase: i + 1,
+        phaseDays: mine.length,
+        title: working(x) ? `${titleFor(wp, d)}${x.kind === 'light' ? ' (wet day: slower)' : ''}` : WEATHER_TITLES[x.kind](p),
+        weather: x.kind === 'work' ? undefined : { kind: x.kind, rainMm: x.rainMm ?? undefined, note: x.note },
+        planned: working(x) && p.quantity ? { quantity: round1(p.quantity.value / wp.days), unit: p.quantity.unit, label: p.quantity.label } : undefined,
+        crew: p.workers.map(({ trade, count }) => ({ trade, count })),
+        machines: [
+          ...p.machines.map((m) => ({ name: m.name, count: m.count, kind: 'machine' })),
+          ...p.vehicles.map((v) => ({ name: v.name, count: v.count, kind: 'vehicle' })),
+        ],
+        items: (working(x) ? [...(x.kind === 'light' && x.note ? [x.note] : []), ...itemsFor(wp, d, est)] : weatherItemsFor(x, p, est))
+          .map((text) => ({ text, done: false, source: 'plan' })),
+      });
+    });
+  }
+  return out.map((doc, i) => ({ ...doc, day: i + 1 }));
 }
 
 export function dayStatus(items) {
@@ -155,6 +232,18 @@ export async function withdrawPlan(reportId) {
   if (touched.length) return { removed: 0, kept: days.length };
   await PlinthDay.deleteMany({ report: reportId });
   return { removed: days.length, kept: 0 };
+}
+
+/** Rebuild an accepted plan (e.g. after the weather changed) if nobody has worked on it yet. */
+export async function replan(report) {
+  if (report.verification?.status !== 'Accepted') return { replanned: false };
+  const first = await PlinthDay.findOne({ report: report._id }).sort({ day: 1 }).lean();
+  if (!first) return { replanned: false };
+  const withdrawn = await withdrawPlan(report._id);
+  if (withdrawn.kept) return { replanned: false, kept: withdrawn.kept };
+  const docs = buildDays(report, first.date);
+  await PlinthDay.insertMany(docs);
+  return { replanned: true, days: docs.length };
 }
 
 /** Plans for a project (or every project) with their days, newest accepted first. */

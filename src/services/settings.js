@@ -101,6 +101,25 @@ export const DEFAULT_RULES = {
       backfill: { m3PerJcbDay: 100, helpers: 4 },
       // Learning from recorded actuals: each default rate counts as this many observations.
       learning: { priorWeight: 3, minFactor: 0.4, maxFactor: 2 },
+      // Rain buffer on the plinth schedule (services/weather.js). Known days come from an uploaded
+      // weather report or the Open-Meteo forecast; later days use the monthly rainy-day normals.
+      weather: {
+        site: { name: 'Hinjewadi, Pune', latitude: 18.59, longitude: 73.74 }, // used when the project location cannot be found
+        heavyRainMm: 10, // a day with at least this much rain stops rain-sensitive work
+        lightRainMm: 2.5, // at least this much slows it down
+        // Share of a day's output lost to heavy / light rain, and dry-out days after heavy rain.
+        phases: {
+          excavation: { heavy: 1, light: 0.5, recoveryDays: 1 },
+          pcc: { heavy: 1, light: 0.5, recoveryDays: 0 },
+          foundation: { heavy: 0.5, light: 0, recoveryDays: 0 }, // steel and shuttering go on; the pour waits
+          plinthBeam: { heavy: 0.5, light: 0, recoveryDays: 0 },
+          backfill: { heavy: 1, light: 1, recoveryDays: 1 }, // wet soil cannot be compacted
+        },
+        wetGroundExtraRecoveryDays: 1, // more excavation dry-out when dewatering is needed or the soil is soft
+        // Average days with 2.5 mm+ of rain per month, Jan..Dec (Pune normals, IMD).
+        rainyDaysByMonth: [0.2, 0.2, 0.4, 1.1, 2.6, 9.6, 15.4, 13.4, 8.9, 4.8, 1.8, 0.4],
+        heavyShareOfRainyDays: 0.4, // of those, the share that are heavy (10 mm+); the rest count as light
+      },
     },
   },
   escalation: {
