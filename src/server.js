@@ -19,6 +19,7 @@ import planCheckRoutes from './routes/plan-check.js';
 import resourceRoutes from './routes/resources.js';
 import geotechRoutes from './routes/geotech.js';
 import plinthPlanRoutes from './routes/plinth-plan.js';
+import scheduleRoutes from './routes/schedule.js';
 import { evaluateAllProjects } from './services/engine.js';
 import { hourlyAlertSweep, dailyAgentPass } from './services/ai/orchestrator.js';
 import { BLOCKER_TYPES, BLOCKER_STATUSES, ACTIVITY_STATUSES, HEALTH_STATES, ROLES, SEVERITIES, PRIORITIES } from './models/constants.js';
@@ -49,6 +50,7 @@ app.use('/api/plans', requireAuth, planCheckRoutes);
 app.use('/api/resources', requireAuth, resourceRoutes);
 app.use('/api/geotech', requireAuth, geotechRoutes);
 app.use('/api/plinth-plan', requireAuth, plinthPlanRoutes);
+app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api', requireAuth, insightRoutes);
 
 app.use((err, req, res, next) => {

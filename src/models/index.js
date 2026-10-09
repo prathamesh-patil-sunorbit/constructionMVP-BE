@@ -580,6 +580,26 @@ const geotechReportSchema = new Schema({
 geotechReportSchema.index({ project: 1, createdAt: -1 });
 export const GeotechReport = model('GeotechReport', geotechReportSchema);
 
+// A Microsoft Project schedule uploaded by a manager (.mpp read with MPXJ, or its .xlsx export).
+// `tasks` is the whole outline as read from the file (services/schedule-import.js); status and
+// variance are worked out again when it is read, since they depend on today's date.
+const scheduleImportSchema = new Schema({
+  project: { ...ref('Project'), required: true, index: true },
+  uploadedBy: ref('User'),
+  file: { originalName: String, filename: String, url: String, size: Number },
+  format: { type: String, enum: ['mpp', 'xlsx'] },
+  title: String,
+  sheet: String,
+  statusDate: Date,
+  author: String,
+  application: String,
+  workDaysPerWeek: { type: Number, default: 6 },
+  summary: Schema.Types.Mixed,
+  tasks: [Schema.Types.Mixed],
+}, opts);
+scheduleImportSchema.index({ project: 1, createdAt: -1 });
+export const ScheduleImport = model('ScheduleImport', scheduleImportSchema);
+
 // One working day of an accepted plinth estimate: the checklist the site engineer works through.
 // Created when the estimate is accepted; the engineer ticks items, adds their own and records the
 // actual quantity. `items` with source 'plan' come from the estimate, 'added' from people on site.
