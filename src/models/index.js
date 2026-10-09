@@ -3,7 +3,7 @@ import {
   ROLES, PROJECT_STATUSES, ACTIVITY_STATUSES, HEALTH_STATES, PRIORITIES, DEPENDENCY_TYPES,
   BLOCKER_TYPES, BLOCKER_STATUSES, SEVERITIES, TEAM_TYPES,
   AI_TRIGGERS, AI_DECISIONS, AI_ALERT_LEVELS,
-  STOCK_RISKS, INVENTORY_TXN_TYPES, LABOUR_CATEGORIES, REPORT_KINDS, CAMERA_VERIFY, GEOTECH_VERIFY,
+  STOCK_RISKS, INVENTORY_TXN_TYPES, LABOUR_CATEGORIES, REPORT_KINDS, CAMERA_VERIFY, GEOTECH_VERIFY, HINDRANCE_TYPES,
 } from './constants.js';
 
 const { Schema, model } = mongoose;
@@ -605,8 +605,18 @@ const plinthDaySchema = new Schema({
     addedBy: ref('User'),
     doneBy: ref('User'),
     doneAt: Date,
+    // Why this point could not be done as planned (fewer workers, a machine down, rain...).
+    // Kept on the item itself; the hindrance register on the page is built from these.
+    reasonType: { type: String, enum: HINDRANCE_TYPES },
+    reason: String,
+    hoursLost: Number,
+    reasonByName: String,
+    reasonAt: Date,
   }],
   actualQuantity: Number,
+  // What was really on site, when it differs from the plan. Unset means "as planned".
+  actualCrew: [{ trade: String, count: Number, _id: false }],
+  actualMachines: [{ name: String, count: Number, kind: String, _id: false }],
   note: String,
   status: { type: String, enum: ['Pending', 'In Progress', 'Done'], default: 'Pending' },
   completedAt: Date,

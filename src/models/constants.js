@@ -54,3 +54,6 @@ export const COMPONENT_TYPES = [
 // Component categories are matched against activity names so the model links to real work.
 export const COMPONENT_CATEGORIES = ['structure', 'slab', 'masonry', 'openings', 'mep', 'finishes', 'site'];
 export const severityRank = (s) => SEVERITIES.indexOf(s);
+
+// Reasons work on site is held up. Site engineers pick one when they record a hindrance.
+export const HINDRANCE_TYPES = ['Rain / weather', 'Rock / hard strata', 'Water / dewatering', 'Machine breakdown', 'Labour shortage', 'Material delay', 'Permission / approval', 'Design / drawing', 'Other'];

@@ -203,6 +203,161 @@ export function addPlanStorey({ push, plan, meta, y0, H, slabT, xOffset, floorLa
   });
 }
 
+/**
+ * Building services for one imported storey: risers beside each lift core, mains across the plate
+ * through every core lobby plus a spine joining the cores, and L-shaped branches from the nearest
+ * main into every room. Everything is `engineering`, so it only shows in the MEP / engineering views.
+ * Labels name the flat as "unit", not "flat NN", so services do not join a flat's hit box.
+ */
+export function addPlanServices({ push, plan, meta, y0, H, slabT, xOffset, floorLabel, mepIds, rooms, first }) {
+  const wallH = H - slabT;
+  const ceilY = y0 + wallH - 0.22;
+  const X = (x) => round(xOffset + x);
+  const base = { ...meta, category: 'mep', engineering: true, activityIds: mepIds };
+  const pipe = (subtype, x, y, z, length, rotation, dia, label, callout) => push({
+    ...base, type: 'pipe', subtype, position: [X(x), round(y), round(z)], size: [dia, round(Math.max(0.05, length)), dia],
+    rotation, label, ...(callout ? { callout } : {}),
+  });
+  const runX = (subtype, a, b, y, z, dia, label, callout) => pipe(subtype, (a + b) / 2, y, z, Math.abs(b - a), [0, 0, Math.PI / 2], dia, label, callout);
+  const runZ = (subtype, x, y, a, b, dia, label) => pipe(subtype, x, y, (a + b) / 2, Math.abs(b - a), [Math.PI / 2, 0, 0], dia, label);
+  const runY = (subtype, x, a, b, z, dia, label) => pipe(subtype, x, (a + b) / 2, z, Math.abs(b - a), [0, 0, 0], dia, label);
+  const duct = (subtype, x, y, z, size, label, callout) => push({
+    ...base, type: 'duct', subtype, position: [X(x), round(y), round(z)], size: size.map(round), label, ...(callout ? { callout } : {}),
+  });
+  const ductX = (subtype, a, b, y, z, w, h, label, callout) => duct(subtype, (a + b) / 2, y, z, [Math.abs(b - a), h, w], label, callout);
+  const ductZ = (subtype, x, y, a, b, w, h, label) => duct(subtype, x, y, (a + b) / 2, [w, h, Math.abs(b - a)], label);
+
+  // Lift cores: lifts closer than 6 m belong to the same core.
+  const cores = [];
+  for (const l of plan.lifts) {
+    const core = cores.find((c) => Math.hypot(c.cx - l.cx, c.cz - l.cz) < 6);
+    if (core) {
+      core.x1 = Math.max(core.x1, l.cx + l.w / 2);
+      core.lifts.push(l);
+      core.cx = core.lifts.reduce((t, k) => t + k.cx, 0) / core.lifts.length;
+      core.cz = core.lifts.reduce((t, k) => t + k.cz, 0) / core.lifts.length;
+    } else {
+      cores.push({ cx: l.cx, cz: l.cz, x1: l.cx + l.w / 2, lifts: [l] });
+    }
+  }
+  if (!cores.length) cores.push({ cx: plan.widthM / 2, cz: plan.depthM / 2, x1: plan.widthM / 2 + 1 });
+  cores.sort((a, b) => a.cz - b.cz);
+
+  const a = 1.2;
+  const b = plan.widthM - 1.2;
+  const mains = [];
+  cores.forEach((core, ci) => {
+    const z = core.cz;
+    const tag = `${floorLabel} core ${ci + 1}`;
+    const lead = first && ci === 0;
+    ductX('supply', a, b, ceilY - 0.02, z - 0.4, 0.55, 0.3, `${tag} AC supply duct main`, lead ? 'AC SUPPLY DUCT' : undefined);
+    ductX('return', a, b, ceilY - 0.04, z + 0.45, 0.45, 0.26, `${tag} return air duct main`, lead ? 'RETURN AIR DUCT' : undefined);
+    runX('sprinkler', a, b, ceilY - 0.32, z - 0.05, 0.11, `${tag} sprinkler main`, lead ? 'FIRE SPRINKLER' : undefined);
+    ductX('tray', a, b, ceilY - 0.34, z + 0.5, 0.3, 0.07, `${tag} cable tray`, lead ? 'CABLE TRAY' : undefined);
+    runX('cold', a, b, ceilY - 0.46, z - 0.5, 0.09, `${tag} domestic water main`, lead ? 'PLUMBING PIPE' : undefined);
+    runX('hot', a, b, ceilY - 0.46, z - 0.3, 0.07, `${tag} hot water main`);
+    mains.push({ axis: 'x', at: z, a, b });
+
+    // Risers just past the lifts, full storey height so they run through the slab.
+    const rx = core.x1 + 0.7;
+    push({
+      ...meta, type: 'shaft', category: 'structure', engineering: true,
+      position: [X(rx + 0.25), round(y0 + wallH / 2), round(z)], size: [1.2, round(wallH * 0.94), 1.4],
+      label: `${tag} service shaft`, activityIds: mepIds, ...(lead ? { callout: 'SHAFT' } : {}),
+    });
+    runY('sprinkler', rx, y0, y0 + H, z - 0.5, 0.15, `${tag} fire riser`);
+    runY('cold', rx + 0.25, y0, y0 + H, z - 0.5, 0.12, `${tag} water riser`);
+    runY('hot', rx + 0.5, y0, y0 + H, z - 0.5, 0.09, `${tag} hot water riser`);
+    runY('drain', rx, y0, y0 + H, z + 0.5, 0.15, `${tag} soil stack`);
+    runY('conduit', rx + 0.5, y0, y0 + H, z + 0.5, 0.1, `${tag} electrical riser`);
+    duct('supply', rx + 0.25, y0 + H / 2, z, [0.45, H, 0.35], `${tag} AC duct riser`);
+  });
+  // Spine between neighbouring cores.
+  for (let ci = 1; ci < cores.length; ci++) {
+    const z0 = cores[ci - 1].cz;
+    const z1 = cores[ci].cz;
+    const x = Math.max(cores[ci - 1].x1, cores[ci].x1) + 2;
+    ductZ('supply', x, ceilY - 0.02, z0, z1, 0.5, 0.3, `${floorLabel} AC supply spine`);
+    runZ('sprinkler', x + 0.45, ceilY - 0.32, z0, z1, 0.1, `${floorLabel} sprinkler spine`);
+    runZ('cold', x - 0.45, ceilY - 0.46, z0, z1, 0.08, `${floorLabel} water spine`);
+    ductZ('tray', x + 0.75, ceilY - 0.34, z0, z1, 0.3, 0.07, `${floorLabel} cable tray spine`);
+    mains.push({ axis: 'z', at: x, a: Math.min(z0, z1), b: Math.max(z0, z1) });
+  }
+
+  if (!rooms) return;
+
+  const nearest = (x, z) => {
+    let best = null;
+    for (const m of mains) {
+      const px = m.axis === 'x' ? Math.min(m.b, Math.max(m.a, x)) : m.at;
+      const pz = m.axis === 'x' ? m.at : Math.min(m.b, Math.max(m.a, z));
+      const d = Math.hypot(px - x, pz - z);
+      if (!best || d < best.d) best = { m, px, pz, d };
+    }
+    return best;
+  };
+  // An L from the nearest main to (x, z): across the main first, then along it. `off` keeps systems apart.
+  const branch = (subtype, x, z, y, off, dia, label, box) => {
+    const hit = nearest(x, z);
+    if (!hit) return;
+    if (hit.m.axis === 'x') {
+      const bx = x + off;
+      if (Math.abs(z - hit.pz) > 0.1) {
+        if (box) ductZ(subtype, bx, y, hit.pz, z, dia, dia * 0.7, label);
+        else runZ(subtype, bx, y, hit.pz, z, dia, label);
+      }
+      if (Math.abs(bx - hit.px) > 0.1 && hit.px !== x) {
+        if (box) ductX(subtype, hit.px, bx, y, hit.pz, dia, dia * 0.7, `${label} take-off`);
+        else runX(subtype, hit.px, bx, y, hit.pz, dia, `${label} take-off`);
+      }
+    } else {
+      const bz = z + off;
+      if (Math.abs(x - hit.px) > 0.1) {
+        if (box) ductX(subtype, hit.px, x, y, bz, dia, dia * 0.7, label);
+        else runX(subtype, hit.px, x, y, bz, dia, label);
+      }
+      if (Math.abs(bz - hit.pz) > 0.1 && hit.pz !== z) {
+        if (box) ductZ(subtype, hit.px, y, hit.pz, bz, dia, dia * 0.7, `${label} take-off`);
+        else runZ(subtype, hit.px, y, hit.pz, bz, dia, `${label} take-off`);
+      }
+    }
+  };
+
+  for (const room of plan.rooms) {
+    if (!room.flat || ['balcony', 'utility', 'lift', 'stair'].includes(room.kind)) continue;
+    const [bx, bz, bw, bd] = room.bbox;
+    const x = bx + bw / 2;
+    const z = bz + bd / 2;
+    const tag = `${floorLabel} unit ${room.flat} ${room.name.toLowerCase()}`;
+    const wet = room.kind === 'bath' || room.kind === 'kitchen';
+    if (room.kind === 'passage') {
+      branch('sprinkler', x, z, ceilY - 0.32, 0.3, 0.08, `${tag} sprinkler branch`);
+      continue;
+    }
+    if (!wet || room.kind === 'kitchen') {
+      branch('sprinkler', x, z, ceilY - 0.32, 0.3, 0.08, `${tag} sprinkler branch`);
+      runY('sprinkler', x + 0.3, ceilY - 0.6, ceilY - 0.32, z, 0.07, `${tag} sprinkler head`);
+    }
+    if (!wet) {
+      branch('supply', x, z, ceilY - 0.02, 0, 0.32, `${tag} AC supply branch`, true);
+      duct('diffuser', x, ceilY - 0.17, z, [0.55, 0.06, 0.55], `${tag} supply diffuser`);
+      branch('conduit', x, z, ceilY - 0.12, -0.35, 0.06, `${tag} lighting conduit`);
+      continue;
+    }
+    // Wet rooms: water in, waste stack down through every floor, exhaust out.
+    const px = bx + Math.min(0.35, bw / 3);
+    const pz = bz + Math.min(0.35, bd / 3);
+    branch('cold', px, pz, ceilY - 0.46, 0.45, 0.08, `${tag} cold water branch`);
+    runY('cold', px + 0.45, y0 + 0.45, ceilY - 0.46, pz, 0.08, `${tag} cold water drop`);
+    if (room.kind === 'bath') {
+      branch('hot', px, pz, ceilY - 0.46, 0.6, 0.07, `${tag} hot water branch`);
+      runY('hot', px + 0.6, y0 + 0.45, ceilY - 0.46, pz, 0.07, `${tag} hot water drop`);
+    }
+    runY('drain', bx + bw - 0.2, y0, y0 + H, bz + 0.2, 0.11, `${tag} waste stack`);
+    duct('exhaust', x, ceilY - 0.1, z, [Math.max(0.3, bw * 0.7), 0.16, 0.2], `${tag} exhaust duct`);
+  }
+}
+
 /** One tower built from the imported plan: site dressing plus every storey. */
 export function addPlanTower({ push, tower, levels, floorplan, xOffset, spec, linkFor, furnishAll = true }) {
   const { width, depth } = planFootprint(floorplan);
@@ -283,6 +438,19 @@ export function addPlanTower({ push, tower, levels, floorplan, xOffset, spec, li
       ids: { slab: link('slab'), structure: link('structure'), masonry: link('masonry'), openings: link('openings'), finishes: link('finishes') },
       furnish: level.kind !== 'ground' && level.kind !== 'podium' && (furnishAll || level.detail),
       top: i === levels.length - 1,
+    });
+    addPlanServices({
+      push,
+      plan: floorplan.plans[level.plan] || floorplan.plans.typical,
+      meta,
+      y0: i * H,
+      H,
+      slabT,
+      xOffset,
+      floorLabel: floor.name,
+      mepIds: link('mep'),
+      rooms: level.kind !== 'ground' && level.kind !== 'podium',
+      first: i === 0,
     });
   });
 }
