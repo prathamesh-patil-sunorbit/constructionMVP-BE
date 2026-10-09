@@ -122,6 +122,16 @@ export const DEFAULT_RULES = {
       },
     },
   },
+  // What-if planning on an uploaded MS Project schedule (services/schedule-sim.js). Placeholder
+  // rates until the planning team confirms them; every scenario lists the ones it used.
+  schedule: {
+    labourEfficiency: 0.7, // +10% people gives +7% output: crews crowd each other
+    maxCompression: 0.4, // a task gets at most 40% shorter however many people are added
+    maxOverlap: 0.75,
+    labourShareOfCost: 0.3, // share of a task's cost that is labour
+    overlapReworkShare: 0.03, // rework / coordination allowance at 50% overlap, of the overlapped tasks' cost
+    siteOverheadPerDay: 150000, // ₹ per calendar day: staff, security, equipment hire, power
+  },
   escalation: {
     minSeverity: 'Low',
     // Severity -> role to escalate to. Real Krisala hierarchy can be configured later.

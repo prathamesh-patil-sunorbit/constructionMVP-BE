@@ -112,11 +112,30 @@ export async function parseMpp(filePath) {
     created: dayOf(t.created),
   }));
   const minutesPerDay = pv.minutes_per_day || 480;
+  // Site holidays from the project calendar (dated ones and yearly ones like Republic Day).
+  const projectCal = (data.calendars || []).find((c) => c.unique_id === pv.default_calendar_unique_id);
+  const holidays = new Map();
+  for (const e of projectCal?.exceptions || []) {
+    if (e.type && e.type !== 'non_working') continue;
+    const name = clean(e.name) || 'Holiday';
+    if (e.from) {
+      for (let d = dayOf(e.from); d <= dayOf(e.to || e.from); d = new Date(d.getTime() + DAY_MS)) holidays.set(d.toISOString().slice(0, 10), name);
+    } else if (e.recurrence?.type === 'yearly' && e.recurrence.month_number && e.recurrence.day_number) {
+      const from = Number(String(e.recurrence.start_date).slice(0, 4));
+      const to = Number(String(e.recurrence.finish_date).slice(0, 4));
+      for (let y = from; y <= to; y++) {
+        const k = new Date(Date.UTC(y, e.recurrence.month_number - 1, e.recurrence.day_number)).toISOString().slice(0, 10);
+        if (!holidays.has(k)) holidays.set(k, name);
+      }
+    }
+  }
   return {
     format: 'mpp',
     // "msproj11" and the like are MS Project's default file titles; the top task names the project.
     title: (!/^msproj\d*$/i.test(clean(pv.project_title)) && clean(pv.project_title)) || tasks.find((t) => t.level === 1)?.name || null,
     workDaysPerWeek: pv.minutes_per_week ? Math.round(pv.minutes_per_week / minutesPerDay) : 6,
+    calendarName: clean(projectCal?.name) || null,
+    holidays: [...holidays.entries()].sort().map(([date, name]) => ({ date, name })),
     statusDate: dayOf(pv.status_date),
     author: clean(pv.last_author) || null,
     application: clean(pv.full_application_name) || null,

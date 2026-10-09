@@ -594,7 +594,10 @@ const scheduleImportSchema = new Schema({
   author: String,
   application: String,
   workDaysPerWeek: { type: Number, default: 6 },
+  calendarName: String,
+  holidays: [{ date: String, name: String, _id: false }], // site holidays from the project calendar, YYYY-MM-DD
   summary: Schema.Types.Mixed,
+  advice: Schema.Types.Mixed, // last AI planning advice (services/schedule-ai.js)
   tasks: [Schema.Types.Mixed],
 }, opts);
 scheduleImportSchema.index({ project: 1, createdAt: -1 });
