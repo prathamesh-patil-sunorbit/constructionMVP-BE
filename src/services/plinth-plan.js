@@ -228,7 +228,7 @@ export async function createPlan(report, { startDate, user } = {}) {
  */
 export async function withdrawPlan(reportId) {
   const days = await PlinthDay.find({ report: reportId });
-  const touched = days.filter((d) => d.actualQuantity != null || d.note || d.items.some((i) => i.done || i.source === 'added'));
+  const touched = days.filter((d) => d.actualQuantity != null || d.note || d.actualCrew?.length || d.actualMachines?.length || d.items.some((i) => i.done || i.source === 'added' || i.reason));
   if (touched.length) return { removed: 0, kept: days.length };
   await PlinthDay.deleteMany({ report: reportId });
   return { removed: days.length, kept: 0 };

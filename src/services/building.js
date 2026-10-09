@@ -168,6 +168,93 @@ function wallPieces(length, doorAt) {
   return pieces;
 }
 
+// Building services for one storey, laid out the way a coordinated MEP model reads:
+// mains along the corridor ceiling, risers at both cores, and a branch set into every flat.
+// Everything is `engineering`, so it only shows in the MEP / engineering views.
+// Labels say "bay", never "flat NN", so the services do not join a flat's hit box.
+export function serviceNetwork({ push, meta, y0, H, wallH, xOffset, width, depth, floorLabel, mepIds, colIds, residential, first }) {
+  const corridorZ = depth / 2;
+  const sideDepth = (depth - CITY_LIFE.corridorM) / 2;
+  const ceilY = y0 + wallH - 0.22;
+  const x0 = xOffset + 0.9;
+  const x1 = xOffset + width - 0.9;
+  const base = { ...meta, category: 'mep', engineering: true, activityIds: mepIds };
+  const pipe = (subtype, position, length, rotation, dia, label, callout) => push({
+    ...base, type: 'pipe', subtype, position, size: [dia, Math.max(0.05, length), dia], rotation, label, callout,
+  });
+  const runX = (subtype, a, b, y, z, dia, label, callout) => pipe(subtype, [(a + b) / 2, y, z], Math.abs(b - a), [0, 0, Math.PI / 2], dia, label, callout);
+  const runZ = (subtype, x, y, a, b, dia, label) => pipe(subtype, [x, y, (a + b) / 2], Math.abs(b - a), [Math.PI / 2, 0, 0], dia, label);
+  const runY = (subtype, x, a, b, z, dia, label) => pipe(subtype, [x, (a + b) / 2, z], Math.abs(b - a), [0, 0, 0], dia, label);
+  const duct = (subtype, position, size, label, callout) => push({ ...base, type: 'duct', subtype, position, size, label, callout });
+
+  // Corridor mains. The corridor is 1.50 m wide, so the services stack in two layers.
+  const len = x1 - x0;
+  const mx = (x0 + x1) / 2;
+  duct('supply', [mx, ceilY - 0.02, corridorZ - 0.38], [len, 0.3, 0.55], `${floorLabel} AC supply duct main`, first ? 'AC SUPPLY DUCT' : undefined);
+  duct('return', [mx, ceilY - 0.04, corridorZ + 0.4], [len, 0.26, 0.45], `${floorLabel} return air duct main`, first ? 'RETURN AIR DUCT' : undefined);
+  runX('sprinkler', x0, x1, ceilY - 0.32, corridorZ - 0.05, 0.11, `${floorLabel} sprinkler main`, first ? 'FIRE SPRINKLER' : undefined);
+  duct('tray', [mx, ceilY - 0.34, corridorZ + 0.45], [len, 0.07, 0.3], `${floorLabel} cable tray`, first ? 'CABLE TRAY' : undefined);
+  runX('cold', x0, x1, ceilY - 0.46, corridorZ - 0.45, 0.09, `${floorLabel} domestic water main`, first ? 'PLUMBING PIPE' : undefined);
+  runX('hot', x0, x1, ceilY - 0.46, corridorZ - 0.25, 0.07, `${floorLabel} hot water main`);
+
+  // Risers beside both cores. Full storey height so they run through the slab.
+  const yMid = y0 + H / 2;
+  [0.25, 0.75].forEach((f, ci) => {
+    const rx = xOffset + width * f + 2.8 + 0.55;
+    const tag = `${floorLabel} core ${ci + 1}`;
+    push({
+      ...meta, type: 'shaft', category: 'structure', engineering: true,
+      position: [rx + 0.25, y0 + wallH / 2, corridorZ], size: [1.2, wallH * 0.94, 1.3],
+      label: `${tag} service shaft`, activityIds: colIds, callout: first && ci === 0 ? 'SHAFT' : undefined,
+    });
+    runY('sprinkler', rx, y0, y0 + H, corridorZ - 0.45, 0.15, `${tag} fire riser`);
+    runY('cold', rx + 0.25, y0, y0 + H, corridorZ - 0.45, 0.12, `${tag} water riser`);
+    runY('hot', rx + 0.5, y0, y0 + H, corridorZ - 0.45, 0.09, `${tag} hot water riser`);
+    runY('drain', rx, y0, y0 + H, corridorZ + 0.45, 0.15, `${tag} soil stack`, first && ci === 0 ? 'DRAINAGE PIPE' : undefined);
+    runY('conduit', rx + 0.5, y0, y0 + H, corridorZ + 0.45, 0.1, `${tag} electrical riser`);
+    duct('supply', [rx + 0.25, yMid, corridorZ], [0.45, H, 0.35], `${tag} AC duct riser`);
+  });
+
+  // Branches into each flat, both sides of the corridor.
+  if (!residential) return;
+  const widths = unitWidths(width);
+  ['front', 'back'].forEach((side) => {
+    const dir = side === 'front' ? -1 : 1;
+    const wall = corridorZ + dir * (CITY_LIFE.corridorM / 2);
+    const at = (fraction) => corridorZ + dir * (CITY_LIFE.corridorM / 2 + sideDepth * fraction);
+    let bx0 = xOffset;
+    widths.forEach((unitW, u) => {
+      const bx = bx0 + unitW / 2;
+      bx0 += unitW;
+      const tag = `${floorLabel} ${side} bay ${u + 1}`;
+      const far = at(0.78);
+      const mid = at(0.42);
+      const wet = at(0.3);
+
+      const sx = bx - unitW * 0.2;
+      duct('supply', [sx, ceilY - 0.02, (corridorZ - 0.38 + far) / 2], [0.32, 0.22, Math.abs(far - (corridorZ - 0.38))], `${tag} AC supply branch`);
+      duct('diffuser', [sx, ceilY - 0.17, mid], [0.5, 0.06, 0.5], `${tag} supply diffuser`);
+      duct('diffuser', [sx, ceilY - 0.17, far], [0.5, 0.06, 0.5], `${tag} supply diffuser 2`);
+      const rx = bx + unitW * 0.12;
+      duct('return', [rx, ceilY - 0.04, (corridorZ + 0.4 + mid) / 2], [0.28, 0.2, Math.abs(mid - (corridorZ + 0.4))], `${tag} return air branch`);
+
+      runZ('sprinkler', bx, ceilY - 0.32, corridorZ - 0.05, far, 0.06, `${tag} sprinkler branch`);
+      runX('sprinkler', bx - unitW * 0.34, bx + unitW * 0.34, ceilY - 0.32, mid, 0.05, `${tag} sprinkler line`);
+      [-0.34, 0.34].forEach((k, n) => runY('sprinkler', bx + unitW * k, ceilY - 0.55, ceilY - 0.32, mid, 0.05, `${tag} sprinkler drop ${n + 1}`));
+
+      const px = bx + unitW * 0.32;
+      runZ('cold', px, ceilY - 0.46, corridorZ - 0.45, wet, 0.05, `${tag} cold water branch`);
+      runZ('hot', px + 0.16, ceilY - 0.46, corridorZ - 0.25, wet, 0.04, `${tag} hot water branch`);
+      runY('cold', px, y0 + 0.45, ceilY - 0.46, wet, 0.05, `${tag} cold water drop`);
+      runY('hot', px + 0.16, y0 + 0.45, ceilY - 0.46, wet, 0.04, `${tag} hot water drop`);
+      runY('drain', px + 0.4, y0, y0 + H, wet, 0.11, `${tag} waste stack`);
+      runX('drain', bx + unitW * 0.08, px + 0.4, y0 + 0.14, wet, 0.08, `${tag} WC waste`);
+      runZ('conduit', bx - unitW * 0.36, ceilY - 0.2, wall, far, 0.04, `${tag} lighting conduit`);
+      runZ('exhaust', px + 0.4, ceilY - 0.12, wet, at(0.02), 0.16, `${tag} toilet exhaust`);
+    });
+  });
+}
+
 export function furnishFloor({ push, meta, y0, wallH, xOffset, width, depth, floorLabel, wallIds, finishIds, openingIds, storey }) {
   const sideDepth = (depth - CITY_LIFE.corridorM) / 2;
   const widths = unitWidths(width);
@@ -891,54 +978,18 @@ export async function buildModel(projectId) {
         }
       }
 
-      // Service risers and branches. Hidden until the viewer opens the engineering cutaway.
-      // Vertical runs are a full storey tall so they pass through the slab into the floor above.
-      {
-        const shaftX = xOffset + width * 0.78;
-        const shaftZ = depth * 0.78;
-        const dia = 0.08;
-        const yMid = y0 + H / 2;
-        const pipe = (subtype, position, length, rotation, label, callout) => push({
-          ...meta, type: 'pipe', category: 'mep', subtype, engineering: true,
-          position, size: [dia, length, dia], rotation, label, activityIds: mepIds, callout,
-        });
+      // Service risers, corridor mains and flat branches. Hidden until the MEP or engineering view is open.
+      serviceNetwork({
+        push, meta, y0, H, wallH, xOffset, width, depth, floorLabel, mepIds, colIds,
+        residential: level.kind === 'residential' || level.kind === 'refuge', first: i === 0,
+      });
+      if (i === 0) {
         push({
-          ...meta, type: 'shaft', category: 'structure', engineering: true,
-          position: [shaftX, y0 + wallH / 2, shaftZ],
-          size: [1.05, wallH * 0.92, 1.05],
-          label: `${floorLabel} service shaft`, activityIds: colIds,
-          callout: i === 0 ? 'SHAFT' : undefined,
+          ...meta, type: 'board', category: 'mep', subtype: 'board', engineering: true,
+          position: [xOffset + t + 0.06, y0 + 1.35, depth * 0.42],
+          size: [0.1, 0.62, 0.42],
+          label: `${floorLabel} distribution board`, activityIds: mepIds,
         });
-        const riserZ = shaftZ - 0.95;
-        pipe('cold', [shaftX - 0.22, yMid, riserZ], H, [0, 0, 0], `${floorLabel} cold-water riser`, i === 0 ? 'PLUMBING PIPE' : undefined);
-        pipe('hot', [shaftX, yMid, riserZ], H, [0, 0, 0], `${floorLabel} hot-water riser`, undefined);
-        pipe('drain', [shaftX + 0.22, yMid, riserZ], H, [0, 0, 0], `${floorLabel} drainage stack`, i === 0 ? 'DRAINAGE PIPE' : undefined);
-        pipe('conduit', [shaftX + 0.55, yMid, shaftZ], H * 0.92, [0, 0, 0], `${floorLabel} electrical riser`, undefined);
-
-        const bathX = shaftX - 0.55;
-        const run = Math.abs(bathX - (shaftX - 0.22));
-        pipe('cold', [(bathX + shaftX - 0.22) / 2, y0 + 1.15, riserZ], run, [0, 0, Math.PI / 2], `${floorLabel} cold branch`, undefined);
-        pipe('hot', [(bathX + shaftX) / 2, y0 + 1.0, riserZ], Math.abs(bathX - shaftX) || 0.2, [0, 0, Math.PI / 2], `${floorLabel} hot branch`, undefined);
-        pipe('drain', [shaftX + 0.22, y0 + 0.28, (riserZ + shaftZ) / 2], Math.abs(shaftZ - riserZ), [Math.PI / 2, 0, 0], `${floorLabel} waste branch`, undefined);
-        pipe('cold', [bathX, y0 + 0.62, riserZ], 1.05, [0, 0, 0], `${floorLabel} bathroom drop`, undefined);
-
-        const kitX = xOffset + width * 0.55;
-        const kitZ = depth * 0.28;
-        const kitRun = Math.abs(kitZ - riserZ);
-        pipe('cold', [shaftX - 0.22, y0 + 0.9, (kitZ + riserZ) / 2], kitRun, [Math.PI / 2, 0, 0], `${floorLabel} kitchen cold`, undefined);
-        pipe('drain', [kitX, y0 + 0.22, (kitZ + depth * 0.5) / 2], Math.abs(kitZ - depth * 0.5), [Math.PI / 2, 0, 0], `${floorLabel} kitchen waste`, undefined);
-
-        const ceilY = y0 + wallH - 0.35;
-        pipe('conduit', [cx, ceilY, depth * 0.35], width * 0.72, [0, 0, Math.PI / 2], `${floorLabel} ceiling conduit`, i === 0 ? 'ELECTRICAL CONDUIT' : undefined);
-        pipe('conduit', [cx, ceilY - 0.12, depth * 0.62], width * 0.55, [0, 0, Math.PI / 2], `${floorLabel} ceiling conduit 2`, undefined);
-        if (i === 0) {
-          push({
-            ...meta, type: 'board', category: 'mep', subtype: 'board', engineering: true,
-            position: [xOffset + t + 0.06, y0 + 1.35, depth * 0.42],
-            size: [0.1, 0.62, 0.42],
-            label: `${floorLabel} distribution board`, activityIds: mepIds,
-          });
-        }
       }
 
       // AC outdoor units on the side wall.
