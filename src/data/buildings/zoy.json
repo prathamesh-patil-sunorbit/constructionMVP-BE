@@ -1,0 +1,1258 @@
+{
+  "match": "ZOY",
+  "name": "Krisala 41 ZOY",
+  "source": "Typical floor plans of Wing A and Wing B and the Wing B refuge floor plan (sales brochure); facade colours sampled from the daylight aerial render. Flat rectangles are traced on the Wing A sheet in its pixels; pxToM converts them to metres.",
+  "pxToM": 0.041,
+  "plan": {
+    "x0": 70,
+    "y0": 59,
+    "x1": 1011,
+    "y1": 740
+  },
+  "units": [
+    {
+      "no": "01",
+      "type": "2BHK S T4",
+      "carpetSqm": 62.35,
+      "balconySqm": 4.57,
+      "dryBalconySqm": 2.21,
+      "totalSqft": 744,
+      "rect": [
+        310,
+        510,
+        525,
+        745
+      ],
+      "balconies": [
+        {
+          "side": "E",
+          "from": 520,
+          "to": 600
+        }
+      ],
+      "rooms": [
+        {
+          "type": "lobby",
+          "rect": [
+            310,
+            512,
+            370,
+            540
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            370,
+            512,
+            485,
+            585
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            485,
+            520,
+            520,
+            600
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            312,
+            540,
+            370,
+            600
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            312,
+            600,
+            370,
+            620
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            375,
+            585,
+            430,
+            620
+          ]
+        },
+        {
+          "type": "passage",
+          "rect": [
+            405,
+            620,
+            430,
+            660
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            430,
+            590,
+            520,
+            665
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            375,
+            635,
+            405,
+            680
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            375,
+            685,
+            405,
+            735
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            405,
+            680,
+            520,
+            745
+          ],
+          "name": "Bedroom 2"
+        }
+      ]
+    },
+    {
+      "no": "02",
+      "type": "2BHK S T2",
+      "carpetSqm": 62.66,
+      "balconySqm": 4.42,
+      "dryBalconySqm": 2.21,
+      "totalSqft": 746,
+      "rect": [
+        70,
+        510,
+        290,
+        745
+      ],
+      "balconies": [
+        {
+          "side": "W",
+          "from": 520,
+          "to": 590
+        }
+      ],
+      "rooms": [
+        {
+          "type": "living",
+          "rect": [
+            110,
+            512,
+            218,
+            585
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            70,
+            512,
+            110,
+            580
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            218,
+            512,
+            260,
+            545
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            218,
+            545,
+            280,
+            600
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            218,
+            600,
+            280,
+            620
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            160,
+            585,
+            218,
+            640
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            70,
+            585,
+            160,
+            670
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            183,
+            640,
+            218,
+            690
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            183,
+            690,
+            218,
+            740
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            70,
+            675,
+            183,
+            745
+          ],
+          "name": "Bedroom 2"
+        }
+      ]
+    },
+    {
+      "no": "03",
+      "type": "2BHK S T2",
+      "carpetSqm": 62.66,
+      "balconySqm": 4.42,
+      "dryBalconySqm": 2.21,
+      "totalSqft": 746,
+      "rect": [
+        70,
+        280,
+        290,
+        510
+      ],
+      "balconies": [
+        {
+          "side": "W",
+          "from": 420,
+          "to": 490
+        }
+      ],
+      "rooms": [
+        {
+          "type": "bed",
+          "rect": [
+            70,
+            285,
+            183,
+            350
+          ],
+          "name": "Bedroom 2"
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            183,
+            285,
+            218,
+            345
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            183,
+            350,
+            218,
+            395
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            70,
+            355,
+            160,
+            430
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "dining",
+          "rect": [
+            160,
+            380,
+            218,
+            440
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            218,
+            400,
+            280,
+            420
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            218,
+            420,
+            280,
+            475
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            110,
+            440,
+            218,
+            510
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            70,
+            440,
+            110,
+            505
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            218,
+            475,
+            260,
+            505
+          ]
+        }
+      ]
+    },
+    {
+      "no": "04",
+      "type": "3BHK",
+      "carpetSqm": 82.96,
+      "balconySqm": 7.77,
+      "dryBalconySqm": 2.32,
+      "totalSqft": 1002,
+      "rect": [
+        85,
+        60,
+        410,
+        250
+      ],
+      "balconies": [
+        {
+          "side": "N",
+          "from": 95,
+          "to": 175
+        },
+        {
+          "side": "N",
+          "from": 250,
+          "to": 330
+        }
+      ],
+      "rooms": [
+        {
+          "type": "balcony",
+          "rect": [
+            87,
+            58,
+            172,
+            72
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            92,
+            72,
+            170,
+            185
+          ],
+          "name": "Bedroom 3"
+        },
+        {
+          "type": "bed",
+          "rect": [
+            172,
+            72,
+            247,
+            162
+          ],
+          "name": "Bedroom 2"
+        },
+        {
+          "type": "passage",
+          "rect": [
+            160,
+            162,
+            215,
+            185
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            92,
+            185,
+            150,
+            220
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            152,
+            185,
+            205,
+            220
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            247,
+            58,
+            328,
+            72
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            247,
+            72,
+            328,
+            190
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            205,
+            190,
+            300,
+            225
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            213,
+            222,
+            235,
+            265
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            240,
+            222,
+            295,
+            265
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            297,
+            222,
+            325,
+            262
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            328,
+            88,
+            368,
+            140
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            328,
+            140,
+            405,
+            222
+          ],
+          "name": "Bedroom 1"
+        }
+      ]
+    },
+    {
+      "no": "05",
+      "type": "1BHK",
+      "carpetSqm": 38.03,
+      "balconySqm": 4.57,
+      "dryBalconySqm": 0,
+      "totalSqft": 459,
+      "rect": [
+        410,
+        60,
+        560,
+        235
+      ],
+      "balconies": [
+        {
+          "side": "N",
+          "from": 480,
+          "to": 560
+        }
+      ],
+      "rooms": [
+        {
+          "type": "toilet",
+          "rect": [
+            448,
+            88,
+            482,
+            140
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            405,
+            140,
+            482,
+            222
+          ],
+          "name": "Bedroom"
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            485,
+            58,
+            560,
+            72
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            482,
+            72,
+            560,
+            222
+          ],
+          "name": "Living & dining"
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            482,
+            222,
+            535,
+            265
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            535,
+            205,
+            560,
+            240
+          ]
+        }
+      ]
+    },
+    {
+      "no": "06",
+      "type": "2BHK S T1",
+      "carpetSqm": 61.79,
+      "balconySqm": 4.42,
+      "dryBalconySqm": 2.2,
+      "totalSqft": 736,
+      "rect": [
+        560,
+        60,
+        790,
+        270
+      ],
+      "balconies": [
+        {
+          "side": "N",
+          "from": 560,
+          "to": 640
+        }
+      ],
+      "rooms": [
+        {
+          "type": "balcony",
+          "rect": [
+            562,
+            58,
+            632,
+            75
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            562,
+            75,
+            640,
+            205
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            640,
+            58,
+            715,
+            145
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "bed",
+          "rect": [
+            715,
+            72,
+            790,
+            175
+          ],
+          "name": "Bedroom 2"
+        },
+        {
+          "type": "passage",
+          "rect": [
+            640,
+            145,
+            735,
+            175
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            640,
+            175,
+            680,
+            210
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            680,
+            175,
+            735,
+            200
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            735,
+            175,
+            790,
+            200
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            620,
+            210,
+            680,
+            270
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            680,
+            210,
+            700,
+            265
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            590,
+            205,
+            618,
+            245
+          ]
+        }
+      ]
+    },
+    {
+      "no": "07",
+      "type": "2BHK L",
+      "carpetSqm": 66.06,
+      "balconySqm": 7.5,
+      "dryBalconySqm": 2.33,
+      "totalSqft": 817,
+      "rect": [
+        790,
+        75,
+        1010,
+        315
+      ],
+      "balconies": [
+        {
+          "side": "E",
+          "from": 95,
+          "to": 190
+        },
+        {
+          "side": "E",
+          "from": 240,
+          "to": 310
+        }
+      ],
+      "rooms": [
+        {
+          "type": "toilet",
+          "rect": [
+            852,
+            80,
+            885,
+            135
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            852,
+            135,
+            885,
+            180
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            885,
+            80,
+            985,
+            155
+          ],
+          "name": "Bedroom 2"
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            985,
+            85,
+            1005,
+            155
+          ]
+        },
+        {
+          "type": "passage",
+          "rect": [
+            880,
+            155,
+            905,
+            200
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            905,
+            160,
+            1000,
+            220
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "dry",
+          "rect": [
+            790,
+            200,
+            850,
+            220
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            850,
+            190,
+            905,
+            240
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            790,
+            220,
+            850,
+            280
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            850,
+            225,
+            980,
+            300
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            980,
+            240,
+            1005,
+            310
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            805,
+            285,
+            850,
+            310
+          ]
+        }
+      ]
+    },
+    {
+      "no": "08",
+      "type": "2BHK L",
+      "carpetSqm": 66.06,
+      "balconySqm": 7.5,
+      "dryBalconySqm": 2.33,
+      "totalSqft": 817,
+      "rect": [
+        790,
+        315,
+        1010,
+        550
+      ],
+      "balconies": [
+        {
+          "side": "E",
+          "from": 330,
+          "to": 400
+        },
+        {
+          "side": "E",
+          "from": 430,
+          "to": 530
+        }
+      ],
+      "rooms": [
+        {
+          "type": "lobby",
+          "rect": [
+            805,
+            320,
+            850,
+            345
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            850,
+            320,
+            980,
+            390
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            980,
+            320,
+            1005,
+            390
+          ]
+        },
+        {
+          "type": "kitchen",
+          "rect": [
+            790,
+            350,
+            850,
+            405
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            790,
+            405,
+            850,
+            430
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            850,
+            395,
+            905,
+            435
+          ]
+        },
+        {
+          "type": "passage",
+          "rect": [
+            885,
+            425,
+            905,
+            470
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            905,
+            395,
+            995,
+            465
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            852,
+            430,
+            885,
+            490
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            852,
+            495,
+            885,
+            545
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            885,
+            485,
+            985,
+            545
+          ],
+          "name": "Bedroom 2"
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            985,
+            475,
+            1005,
+            545
+          ]
+        }
+      ]
+    },
+    {
+      "no": "09",
+      "type": "2BHK S T3",
+      "carpetSqm": 61.53,
+      "balconySqm": 4.68,
+      "dryBalconySqm": 2.2,
+      "totalSqft": 736,
+      "rect": [
+        560,
+        320,
+        790,
+        565
+      ],
+      "balconies": [
+        {
+          "side": "S",
+          "from": 715,
+          "to": 790
+        }
+      ],
+      "rooms": [
+        {
+          "type": "kitchen",
+          "rect": [
+            672,
+            325,
+            735,
+            395
+          ]
+        },
+        {
+          "type": "dry",
+          "rect": [
+            650,
+            325,
+            670,
+            390
+          ]
+        },
+        {
+          "type": "lobby",
+          "rect": [
+            735,
+            360,
+            760,
+            395
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            562,
+            395,
+            615,
+            425
+          ]
+        },
+        {
+          "type": "toilet",
+          "rect": [
+            618,
+            395,
+            670,
+            425
+          ]
+        },
+        {
+          "type": "dining",
+          "rect": [
+            670,
+            395,
+            740,
+            440
+          ]
+        },
+        {
+          "type": "passage",
+          "rect": [
+            590,
+            425,
+            665,
+            450
+          ]
+        },
+        {
+          "type": "living",
+          "rect": [
+            712,
+            400,
+            790,
+            505
+          ]
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            562,
+            430,
+            638,
+            525
+          ]
+        },
+        {
+          "type": "bed",
+          "rect": [
+            640,
+            450,
+            712,
+            540
+          ],
+          "name": "Bedroom 1"
+        },
+        {
+          "type": "balcony",
+          "rect": [
+            718,
+            505,
+            790,
+            525
+          ]
+        }
+      ]
+    }
+  ],
+  "core": [
+    {
+      "name": "Lifts, stairs, fire tower",
+      "rect": [
+        290,
+        250,
+        560,
+        515
+      ]
+    },
+    {
+      "name": "1.50 m passage",
+      "rect": [
+        560,
+        270,
+        790,
+        320
+      ]
+    }
+  ],
+  "wings": {
+    "A": {
+      "mirror": false,
+      "note": "Wing A drawing as published (north up)"
+    },
+    "B": {
+      "mirror": true,
+      "note": "Wing B is Wing A flipped north-south (3 BHK row to the south)"
+    }
+  },
+  "wingGapM": 0,
+  "typicalFloors": [
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11,
+    12,
+    13,
+    15,
+    16,
+    17,
+    18,
+    20,
+    21,
+    22,
+    23,
+    25,
+    26,
+    27,
+    28
+  ],
+  "refugeFloors": [
+    4,
+    9,
+    14,
+    19,
+    24,
+    29
+  ],
+  "refugeOmits": [
+    "05"
+  ],
+  "podium": {
+    "widthM": 52,
+    "depthM": 74
+  },
+  "floorHeightM": 3.0,
+  "podiumHeightM": 3.6,
+  "facade": {
+    "wall": "#cfcac6",
+    "band": "#f2f0ec",
+    "copper": "#c27a45",
+    "jali": "#4a443e",
+    "crownJali": "#a69c94",
+    "glass": "#9fb3c4",
+    "louver": "#8a6146",
+    "balconyRail": "#55636f"
+  },
+  "drawings": {
+    "A": {
+      "typical": {
+        "src": "/plans/zoy-wing-a-typical.png",
+        "size": [
+          1134,
+          1104
+        ],
+        "bbox": [
+          70,
+          59,
+          1011,
+          740
+        ],
+        "mirrored": false
+      },
+      "refuge": null
+    },
+    "B": {
+      "typical": {
+        "src": "/plans/zoy-wing-b-typical.png",
+        "size": [
+          1606,
+          1144
+        ],
+        "bbox": [
+          115,
+          222,
+          1268,
+          1056
+        ],
+        "mirrored": true
+      },
+      "refuge": {
+        "src": "/plans/zoy-wing-b-refuge.png",
+        "size": [
+          1642,
+          1098
+        ],
+        "bbox": [
+          113,
+          210,
+          1265,
+          1044
+        ],
+        "mirrored": true
+      }
+    }
+  }
+}

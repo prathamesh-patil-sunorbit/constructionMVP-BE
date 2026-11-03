@@ -12,6 +12,7 @@ import { audit } from '../services/audit.js';
 import { enrich, parseSchedule, summarise } from '../services/schedule-import.js';
 import { PACKAGES, simulate } from '../services/schedule-sim.js';
 import { adviseOnSchedule, planInputs } from '../services/schedule-ai.js';
+import { build4d, buildingProfile } from '../services/schedule-4d.js';
 import { getRules } from '../services/settings.js';
 import { checkRateLimit } from '../services/ai/gemini.js';
 import { DAY_MS, addDays, toDay, today } from '../utils/dates.js';
@@ -138,6 +139,20 @@ router.post('/imports/:id/advice', requireRole(...PLANNERS), async (req, res) =>
   const out = await adviseOnSchedule(doc, await getRules(), { user: req.user, projectName: project?.name });
   if (out.advice) await ScheduleImport.updateOne({ _id: doc._id }, { $set: { advice: out.advice } });
   res.json({ advice: out.advice, error: out.error || null });
+});
+
+// ---------- 4D model ----------
+
+// Wings, levels and every task placed on its level, from the latest upload (or ?import=).
+router.get('/model4d', async (req, res) => {
+  const { project } = req.query;
+  if (!project) return res.status(400).json({ error: 'project is required' });
+  const doc = req.query.import && mongoose.isValidObjectId(req.query.import)
+    ? await ScheduleImport.findById(req.query.import).populate('uploadedBy', 'name').lean()
+    : await ScheduleImport.findOne({ project }).sort({ createdAt: -1 }).populate('uploadedBy', 'name').lean();
+  if (!doc) return res.json({ import: null, model: null, profile: null });
+  const { tasks, ...meta } = fresh(doc);
+  res.json({ import: meta, model: build4d({ ...doc, tasks }), profile: buildingProfile(doc.title, doc.file?.originalName) });
 });
 
 // ---------- Day-wise tasks (site engineers) ----------
