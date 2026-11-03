@@ -236,6 +236,29 @@ router.patch('/:id/verify', async (req, res) => {
   res.json({ ...(await populated(report._id)), plan });
 });
 
+// Delete a report and everything built from it: its Plinth Plan days (site updates included),
+// its AI prediction and the uploaded files. The audit trail keeps a record of what was removed.
+// Managers can delete any report; others only the ones they uploaded.
+router.delete('/:id', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: 'Report not found' });
+  const report = await GeotechReport.findById(req.params.id);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  if (!MANAGER_ROLES.includes(req.user.role) && String(report.uploadedBy) !== String(req.user._id)) {
+    return res.status(403).json({ error: 'Only a manager or the person who uploaded this report can delete it' });
+  }
+  const { deletedCount: planDays } = await PlinthDay.deleteMany({ report: report._id });
+  if (report.prediction) await AiPrediction.deleteOne({ _id: report.prediction });
+  await GeotechReport.deleteOne({ _id: report._id });
+  for (const filename of [report.file?.filename, report.weatherUpload?.file?.filename]) {
+    if (filename) fs.rm(path.join(UPLOAD_DIR, path.basename(filename)), { force: true }, () => {});
+  }
+  await audit(req.user, 'Geotech report deleted', {
+    entityType: 'GeotechReport', entityId: report._id, project: report.project,
+    previousValue: { file: report.file?.originalName, status: report.verification?.status || 'Proposed', planDays },
+  });
+  res.json({ deleted: true, planDays });
+});
+
 // ---------- Weather ----------
 
 // Upload a weather report for the site. Its daily rain replaces the forecast on the days it covers.
